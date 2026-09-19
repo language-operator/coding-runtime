@@ -1,5 +1,11 @@
 .git
 node_modules
-test
 .e2e
 docs
+
+# The suite is not part of any image, but the fixture adapter is built from this
+# same context (test/fixture-adapter/Dockerfile), so its directory has to stay
+# reachable. Excluding it is what made `COPY test/fixture-adapter/...` fail with
+# "not found" while the examples/ copies succeeded.
+test
+!test/fixture-adapter

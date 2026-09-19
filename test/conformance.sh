@@ -18,6 +18,7 @@ set -euo pipefail
 
 IMAGE="${1:?usage: conformance.sh <image> [base|adapter]}"
 MODE="${2:-base}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(mktemp -d)"
 CONTAINER="conformance-$$"
 PASS=0
@@ -185,9 +186,17 @@ echo "== adapter =="
 check "doctor passes"               run 'coding-runtime doctor'
 check "seed writes harness config"  run 'coding-runtime seed && [ -n "$(ls -A /workspace)" ]'
 check "seed is idempotent"          run 'coding-runtime seed && coding-runtime seed 2>&1 | grep -q unchanged'
-check "nothing is written outside /tmp and /workspace" \
-    run 'coding-runtime seed && [ -z "$(find / -xdev -newer /opt/coding-runtime/VERSION -type f \
-         -not -path "/tmp/*" -not -path "/workspace/*" -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -1)" ]'
+# Timestamped against a marker written at container start rather than against
+# a file baked into the image: every file an adapter layer adds is newer than
+# the base's own VERSION, so that reference flagged the adapter's manifest as if
+# seed had written it. What matters is what seed changes at runtime.
+check "seed writes nothing outside /tmp and /workspace" \
+    run 'touch /tmp/.mark
+         coding-runtime seed >/dev/null 2>&1
+         found=$(find / -xdev -newer /tmp/.mark -type f \
+             -not -path "/tmp/*" -not -path "/workspace/*" \
+             -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -5)
+         [ -z "$found" ] || { echo "seed wrote outside the writable paths:"; echo "$found"; exit 1; }'
 
 SURFACE="$(docker run --rm --entrypoint sh "$IMAGE" -c 'cat /etc/coding-runtime/runtime.json 2>/dev/null' \
     | tr -d ' \n' | grep -o '"surface":"[a-z]*"' | cut -d'"' -f4 || true)"
@@ -230,6 +239,20 @@ if [ "$SURFACE" = terminal ]; then
     ws_is() { [ "$(ws_status "$2")" = "$1" ]; }
     check "same-origin upgrade is accepted"  ws_is 101 http://127.0.0.1:18080
     check "cross-origin upgrade is rejected" ws_is 403 https://evil.example
+
+    # A 101 only proves the handshake. This drives the socket the way a browser
+    # does and requires a keystroke to reach the process under tmux and its
+    # output to come back — the pty, the tmux session and the bridge, end to
+    # end. Run inside the image, sharing the server's network namespace, so it
+    # uses the base's own ws and reaches the terminal on loopback exactly as the
+    # oauth2-proxy sidecar would.
+    terminal_round_trip() {
+        docker run --rm --network "container:$CONTAINER" \
+            -v "$SCRIPT_DIR/fixture-adapter:/probe:ro" \
+            --entrypoint node "$IMAGE" \
+            /probe/ws-probe.cjs ws://127.0.0.1:8080/ws http://127.0.0.1:8080
+    }
+    check "a keystroke round-trips through tmux" terminal_round_trip
 
     docker logs "$CONTAINER" 2>&1 | tail -20
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
