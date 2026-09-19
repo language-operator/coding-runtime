@@ -186,9 +186,17 @@ echo "== adapter =="
 check "doctor passes"               run 'coding-runtime doctor'
 check "seed writes harness config"  run 'coding-runtime seed && [ -n "$(ls -A /workspace)" ]'
 check "seed is idempotent"          run 'coding-runtime seed && coding-runtime seed 2>&1 | grep -q unchanged'
-check "nothing is written outside /tmp and /workspace" \
-    run 'coding-runtime seed && [ -z "$(find / -xdev -newer /opt/coding-runtime/VERSION -type f \
-         -not -path "/tmp/*" -not -path "/workspace/*" -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -1)" ]'
+# Timestamped against a marker written at container start rather than against
+# a file baked into the image: every file an adapter layer adds is newer than
+# the base's own VERSION, so that reference flagged the adapter's manifest as if
+# seed had written it. What matters is what seed changes at runtime.
+check "seed writes nothing outside /tmp and /workspace" \
+    run 'touch /tmp/.mark
+         coding-runtime seed >/dev/null 2>&1
+         found=$(find / -xdev -newer /tmp/.mark -type f \
+             -not -path "/tmp/*" -not -path "/workspace/*" \
+             -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -5)
+         [ -z "$found" ] || { echo "seed wrote outside the writable paths:"; echo "$found"; exit 1; }'
 
 SURFACE="$(docker run --rm --entrypoint sh "$IMAGE" -c 'cat /etc/coding-runtime/runtime.json 2>/dev/null' \
     | tr -d ' \n' | grep -o '"surface":"[a-z]*"' | cut -d'"' -f4 || true)"
