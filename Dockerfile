@@ -125,8 +125,11 @@ COPY package.json package-lock.json ./
 COPY src ./src
 COPY etc/tmux.conf /etc/tmux.conf
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
-RUN ln -s /opt/coding-runtime/src/cli.mjs /usr/local/bin/coding-runtime \
-    && chmod 755 /opt/coding-runtime/src/cli.mjs
+# A wrapper rather than a symlink: through a symlink, argv[1] is the link path
+# while import.meta.url is the resolved target, and anything comparing the two
+# sees them differ.
+RUN printf '#!/bin/sh\nexec node /opt/coding-runtime/src/cli.mjs "$@"\n' > /usr/local/bin/coding-runtime \
+    && chmod 755 /usr/local/bin/coding-runtime /opt/coding-runtime/src/cli.mjs
 
 ARG VERSION=0.0.0-dev
 RUN echo "$VERSION" > /opt/coding-runtime/VERSION

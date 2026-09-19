@@ -63,6 +63,19 @@ run() {
         --entrypoint sh "$IMAGE" -c "$1"
 }
 
+# The image's real ENTRYPOINT, rather than sh -c. Worth exercising separately:
+# a CLI that silently does nothing still exits 0, so every check that only
+# inspects an exit status passes against a completely inert binary.
+run_entrypoint() {
+    docker run --rm \
+        --read-only --tmpfs /tmp:rw,size=64m \
+        --user 1000:1000 --cap-drop ALL \
+        -v "$WORKDIR/workspace:/workspace" \
+        -v "$WORKDIR/etc-agent:/etc/agent:ro" \
+        -e AGENT_NAME=conformance -e HOME=/workspace/.home \
+        "$IMAGE" 2>&1
+}
+
 # Does this image carry the Node runtime, or is it a thin (Python) base?
 has_cli() {
     docker run --rm --entrypoint sh "$IMAGE" -c 'command -v coding-runtime' >/dev/null 2>&1
@@ -117,7 +130,8 @@ check "git does not warn about the current user" \
 if has_cli; then
     echo "== runtime =="
     check "coding-runtime is on PATH"    run 'command -v coding-runtime'
-    check "reports a version"            run 'coding-runtime version'
+    check "reports a version"            run 'coding-runtime version | grep -Eq "^[0-9]+\\.[0-9]+\\.[0-9]+"'
+    check "an unknown command explains itself" run 'coding-runtime nope 2>&1 | grep -q usage'
     check "tmux is present"              run 'tmux -V'
     check "gh is present"                run 'gh --version'
     check "glab is present"              run 'glab --version'
@@ -141,6 +155,17 @@ if [ "$MODE" = base ]; then
         # shellcheck disable=SC2317  # invoked indirectly, via check
         doctor_names_manifest() { printf '%s' "$doctor_out" | grep -q 'runtime.json'; }
         check "doctor explains a missing manifest" doctor_names_manifest
+
+        # The base ships no manifest, so the entrypoint must refuse to start and
+        # say why. An entrypoint that exits 0 having done nothing is the failure
+        # mode this guards: it looks healthy from every angle except the agent
+        # never actually running.
+        entry_out="$(run_entrypoint || true)"
+        echo "  --- entrypoint ---"
+        printf '%s\n' "$entry_out" | sed 's/^/        | /' | tail -6
+        # shellcheck disable=SC2317  # invoked indirectly, via check
+        entry_explains() { printf '%s' "$entry_out" | grep -q 'runtime.json'; }
+        check "the entrypoint fails loudly without a manifest" entry_explains
     fi
     echo
     echo "base image: $PASS passed, $FAIL failed"

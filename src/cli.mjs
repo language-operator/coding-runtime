@@ -15,7 +15,7 @@
  * no shared writable path between them.
  */
 
-import { readFileSync, existsSync, accessSync, constants } from 'node:fs';
+import { readFileSync, existsSync, accessSync, constants, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -287,6 +287,24 @@ export async function main(argv = process.argv.slice(2), ctx = {}) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/**
+ * Was this file run directly?
+ *
+ * argv[1] has to be resolved first. Node reports import.meta.url as the real
+ * path of the module, but argv[1] is whatever the caller typed — and this CLI
+ * is reached through /usr/local/bin/coding-runtime. Comparing the two without
+ * resolving makes the guard false for every real invocation, so main() never
+ * runs and every command becomes a silent no-op that still exits 0.
+ */
+function invokedDirectly() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   main().then((code) => { if (code !== 0) process.exitCode = code; });
 }
