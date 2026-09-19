@@ -24,9 +24,17 @@ PASS=0
 FAIL=0
 
 cleanup() {
+    local status=$?
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-    chmod -R u+w "$WORKDIR" 2>/dev/null || true
-    rm -rf "$WORKDIR"
+    # The container runs as uid 1000 and writes into the bind-mounted workspace,
+    # so those files belong to a user the caller may not be — on a CI runner it
+    # never is. Remove them from inside a root container, then clear the rest.
+    docker run --rm -v "$WORKDIR:/w" --user 0:0 --entrypoint sh "$IMAGE" \
+        -c 'rm -rf /w/workspace /w/etc-agent' >/dev/null 2>&1 || true
+    rm -rf "$WORKDIR" 2>/dev/null || true
+    # Preserve the suite's own verdict: a cleanup that cannot delete a scratch
+    # directory must not turn a passing run red.
+    return "$status"
 }
 trap cleanup EXIT
 
