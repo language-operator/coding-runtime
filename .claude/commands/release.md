@@ -45,12 +45,28 @@ or `patch`. If it is missing or anything else, print usage
   Releasing a red commit publishes a broken base image to every adapter that
   later pins it. If CI is failing, stop and say so.
 
-**2. Determine the baseline.** The highest semver among: the latest tag
-(`git describe --tags --match 'v*' --abbrev=0`, which may be empty), and
-`version` in `package.json`.
+**2. Determine the baseline.** Read `version` from `package.json` and the
+latest tag (`git describe --tags --match 'v*' --abbrev=0`, which may be empty
+when nothing has been released yet).
 
-**3. Compute the next version** — `patch` → `X.Y.(Z+1)`, `minor` → `X.(Y+1).0`,
-`major` → `(X+1).0.0`. Print `Releasing vX.Y.Z (was <baseline>)`.
+**3. Compute the version to release.**
+
+First check whether `package.json`'s current version has ever been tagged
+(`git tag --list "v$(node -p "require('./package.json').version")"`). If it has
+**not**, that version is unreleased and *is* the release — publish it as-is and
+skip the bump in step 5 entirely. Print
+`Releasing vX.Y.Z (already set in package.json; no bump needed)` and say that
+`$ARGUMENTS` was ignored, so the user can object if they meant something else.
+
+This is the normal case for a first release, and for any version bumped by hand
+in an earlier commit. Bumping from it would silently skip a version.
+
+Otherwise bump from the current version — `patch` → `X.Y.(Z+1)`, `minor` →
+`X.(Y+1).0`, `major` → `(X+1).0.0` — and print
+`Releasing vX.Y.Z (was <baseline>)`.
+
+If the latest tag is *higher* than `package.json`'s version, something is out of
+step: stop and report both, rather than guessing which is authoritative.
 
 **4. Check the compatibility ranges.** Each `examples/*/runtime.json` declares a
 `requires.codingRuntime` range. On a **major** bump those ranges will stop
@@ -58,16 +74,21 @@ matching the new base, so update them in the same commit and mention it in the
 release notes — every adapter in the wild will need the same edit. On a minor or
 patch bump, confirm the ranges still admit the new version and leave them alone.
 
-**5. Bump the version.** `npm version <type> --no-git-tag-version`, which updates
+**5. Bump the version**, unless step 3 determined the current version is already
+the one to release. `npm version <type> --no-git-tag-version` updates
 `package.json` and `package-lock.json` together. Do not let npm create the commit
 or tag; this command owns both.
+
+When no bump is needed there is nothing to commit, so skip step 7's commit and
+tag the existing HEAD.
 
 **6. Verify.** Run `npm test`. Confirm `node -p "require('./package.json').version"`
 matches the computed version.
 
 **7. Commit and tag.**
-- `git commit -am "chore(release): vX.Y.Z"` — check the diff touches only
-  `package.json`, `package-lock.json`, and any `runtime.json` ranges from step 4.
+- If a bump happened: `git commit -am "chore(release): vX.Y.Z"` — check the diff
+  touches only `package.json`, `package-lock.json`, and any `runtime.json` ranges
+  from step 4. If it did not, there is nothing to commit.
 - `git tag -a vX.Y.Z -m "Release vX.Y.Z"`.
 
 **8. Confirm, then push.** Show the new version, `git show --stat HEAD`, the tag,
