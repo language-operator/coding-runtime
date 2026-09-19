@@ -1,0 +1,48 @@
+[
+  {
+    "path": "/workspace/.claude/settings.json",
+    "values": {
+      "preferredNotifChannel": "terminal_bell"
+    },
+    "owns": [
+      "model",
+      "preferredNotifChannel"
+    ]
+  },
+  {
+    "path": "/workspace/.claude/.claude.json",
+    "values": [
+      [
+        [
+          "projects",
+          "/workspace",
+          "hasTrustDialogAccepted"
+        ],
+        true
+      ],
+      [
+        [
+          "projects",
+          "/workspace",
+          "hasCompletedProjectOnboarding"
+        ],
+        true
+      ]
+    ],
+    "owns": [
+      "mcpServers",
+      [
+        "projects",
+        "/workspace",
+        "hasTrustDialogAccepted"
+      ],
+      [
+        "projects",
+        "/workspace",
+        "hasCompletedProjectOnboarding"
+      ],
+      "hasCompletedOnboarding",
+      "oauthAccount"
+    ]
+  }
+]

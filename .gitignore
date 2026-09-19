@@ -1,0 +1,5 @@
+node_modules/
+.helm-packages/
+*.tgz
+.DS_Store
+.e2e/

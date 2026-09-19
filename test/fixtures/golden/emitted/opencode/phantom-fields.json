@@ -1,0 +1,28 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/instructions.md",
+    "contents": "Tone: professional.\n\nDo the thing.\n"
+  },
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "mcp": {
+        "my-tool": {
+          "type": "remote",
+          "url": "http://my-tool.default.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": [
+        "/workspace/.coding-runtime/opencode/instructions.md"
+      ]
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]

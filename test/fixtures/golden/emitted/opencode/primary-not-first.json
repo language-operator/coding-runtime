@@ -1,0 +1,29 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "provider": {
+        "openai": {
+          "options": {
+            "baseURL": "http://gateway.default.svc.cluster.local:8000/v1",
+            "apiKey": "sk-langop-proxy"
+          },
+          "models": {
+            "claude-sonnet-4-5": {},
+            "gpt-4o-mini": {},
+            "gpt-4o": {}
+          }
+        }
+      },
+      "model": "openai/claude-sonnet-4-5"
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]

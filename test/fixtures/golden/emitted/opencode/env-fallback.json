@@ -1,0 +1,45 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/instructions.md",
+    "contents": "Tone: terse.\nPersonality: Direct.\n\nDo what the env says.\n"
+  },
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "provider": {
+        "openai": {
+          "options": {
+            "baseURL": "http://gateway.default.svc.cluster.local:8000/v1",
+            "apiKey": "sk-langop-proxy"
+          },
+          "models": {
+            "claude-sonnet-4-5": {},
+            "gpt-4o": {}
+          }
+        }
+      },
+      "model": "openai/claude-sonnet-4-5",
+      "mcp": {
+        "mem0": {
+          "type": "remote",
+          "url": "http://mem0.tools.svc.cluster.local:8080/mcp"
+        },
+        "localhost": {
+          "type": "remote",
+          "url": "http://localhost:8080/mcp"
+        }
+      },
+      "instructions": [
+        "/workspace/.coding-runtime/opencode/instructions.md"
+      ]
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]

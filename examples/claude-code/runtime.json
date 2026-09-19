@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "claude-code",
+  "displayName": "Claude Code",
+  "role": "main",
+  "requires": { "codingRuntime": ">=0.1.0 <1.0.0" },
+  "env": {
+    "CLAUDE_CONFIG_DIR": "${WORKSPACE}/.claude"
+  },
+  "preflight": [
+    { "path": "${WORKSPACE}/.claude", "mode": "700" }
+  ],
+  "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
+  "serve": { "surface": "terminal", "port": 8080, "originGuard": true },
+  "terminal": {
+    "tmuxSession": "claude",
+    "launch": ["launch-claude"],
+    "cwd": "${WORKDIR}",
+    "wsPath": "/ws",
+    "keepaliveSeconds": 25,
+    "bellIndicator": true
+  }
+}
