@@ -4,8 +4,10 @@
 # fixtures of its own, so CI proves the documented way to build an adapter
 # actually works, not merely that some contrived arrangement does.
 #
-# Build from the repository root:
-#   docker build -f test/fixture-adapter/Dockerfile --build-arg BASE=<image> .
+# Build from the repository root. Use the default (docker-driver) builder, so
+# a locally built base image is visible:
+#   docker buildx build --builder default --load \
+#     -f test/fixture-adapter/Dockerfile --build-arg BASE=<image> -t <tag> .
 ARG BASE=coding-runtime:thick
 FROM ${BASE}
 

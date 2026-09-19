@@ -74,14 +74,17 @@ jobs:
       # the whole path here instead.
       - name: Build the fixture adapter
         if: matrix.variant == 'thick'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: test/fixture-adapter/Dockerfile
-          build-args: BASE=coding-runtime:thick
-          push: false
-          load: true
-          tags: coding-runtime-fixture:test
+        # `--builder default` on purpose. setup-buildx-action creates a
+        # docker-container builder, which has its own store and cannot see an
+        # image sitting in the local daemon — it resolves `FROM
+        # coding-runtime:thick` against Docker Hub and fails on a repository
+        # that does not exist. The default builder uses the docker driver and
+        # reads the daemon the base image was just loaded into.
+        run: |
+          docker buildx build --builder default --load \
+            --file test/fixture-adapter/Dockerfile \
+            --build-arg BASE=coding-runtime:thick \
+            --tag coding-runtime-fixture:test .
 
       - name: Conformance (adapter)
         if: matrix.variant == 'thick'
