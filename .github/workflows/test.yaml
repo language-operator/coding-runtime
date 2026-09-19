@@ -1,0 +1,68 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    # The whole config layer is a pure function of (config text, env map), so
+    # this tier needs no container and no cluster. It is the tier that should
+    # catch almost everything.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        # node-pty is a native addon and is only imported lazily at serve time,
+        # so the unit tier does not need it built.
+        run: npm ci --ignore-scripts
+      - name: Run unit tests
+        run: npm test
+      - name: Check goldens are committed
+        # A golden regenerated but not committed means the suite is asserting
+        # against something nobody reviewed. `git status --porcelain` rather
+        # than `git diff`, so a brand-new untracked golden is caught too.
+        run: |
+          UPDATE_GOLDENS=1 npm test >/dev/null
+          changed="$(git status --porcelain -- test/fixtures/golden)"
+          if [ -n "$changed" ]; then
+            echo "::error::goldens are stale; run UPDATE_GOLDENS=1 npm test and commit the result"
+            echo "$changed"
+            git diff -- test/fixtures/golden
+            exit 1
+          fi
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck entrypoint.sh test/conformance.sh
+
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [thick, thin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - name: Build ${{ matrix.variant }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ${{ matrix.variant }}
+          push: false
+          load: true
+          tags: coding-runtime:${{ matrix.variant }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+      - name: Conformance
+        run: test/conformance.sh coding-runtime:${{ matrix.variant }} base

@@ -1,0 +1,57 @@
+name: Operator Schema Drift
+
+# The normalizer encodes what language-operator writes into
+# /etc/agent/config.yaml. That contract lives in another repository and can
+# change without anyone here noticing — which is exactly how two adapters came
+# to read config fields that have never existed. This job watches for it, so we
+# learn about a new field from CI rather than from an agent behaving oddly.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/config/schema.mjs'
+      - 'src/config/validate.mjs'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Fetch the operator's documented config example
+        run: |
+          curl -fsSL -o /tmp/agents.md \
+            https://raw.githubusercontent.com/language-operator/language-operator/main/spec/agents.md
+          # The example under "Agent Config" is the operator's own statement of
+          # the contract; extract the first YAML block that declares `agent:`.
+          awk '/^```yaml$/{block=""; inblock=1; next}
+               /^```$/{if (inblock && block ~ /(^|\n)agent:/) {printf "%s", block; exit} inblock=0; next}
+               inblock{block = block $0 "\n"}' /tmp/agents.md > /tmp/config.yaml
+          test -s /tmp/config.yaml || { echo "::error::could not extract a config example from spec/agents.md"; exit 1; }
+          cat /tmp/config.yaml
+
+      - name: Normalize it and fail on unknown keys
+        run: |
+          node -e '
+            const { readFileSync } = require("node:fs");
+            import("./src/config/normalize.mjs").then(({ normalize }) => {
+              const doc = normalize({ yamlText: readFileSync("/tmp/config.yaml", "utf8"), env: {} });
+              const unknown = doc.meta.warnings.filter((w) => w.code === "UNKNOWN_KEY");
+              for (const w of doc.meta.warnings) console.log(`${w.code} ${w.path} ${w.message}`);
+              if (unknown.length > 0) {
+                console.error("::error::the operator now emits fields this runtime ignores: " +
+                  unknown.map((w) => w.path).join(", ") +
+                  " — update src/config/schema.mjs and the normalizer");
+                process.exit(1);
+              }
+              console.log("no drift: every documented field is understood");
+            });
+          '
