@@ -18,7 +18,6 @@ set -euo pipefail
 
 IMAGE="${1:?usage: conformance.sh <image> [base|adapter]}"
 MODE="${2:-base}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(mktemp -d)"
 CONTAINER="conformance-$$"
 PASS=0
@@ -240,19 +239,41 @@ if [ "$SURFACE" = terminal ]; then
     check "same-origin upgrade is accepted"  ws_is 101 http://127.0.0.1:18080
     check "cross-origin upgrade is rejected" ws_is 403 https://evil.example
 
-    # A 101 only proves the handshake. This drives the socket the way a browser
-    # does and requires a keystroke to reach the process under tmux and its
-    # output to come back — the pty, the tmux session and the bridge, end to
-    # end. Run inside the image, sharing the server's network namespace, so it
-    # uses the base's own ws and reaches the terminal on loopback exactly as the
-    # oauth2-proxy sidecar would.
-    terminal_round_trip() {
+    # A 101 only proves the handshake. These two together prove the rest of the
+    # path, and do it for any terminal program rather than only for a shell.
+    #
+    # The probe runs inside the image sharing the server's network namespace, so
+    # it uses the base's own ws and reaches the terminal on loopback exactly as
+    # the oauth2-proxy sidecar would. It types plain text and never presses
+    # Enter: submitting a line means something different — and possibly
+    # destructive — in every terminal program.
+    MARKER="zqjxConformanceProbe"
+    terminal_carries_traffic() {
         docker run --rm --network "container:$CONTAINER" \
-            -v "$SCRIPT_DIR/fixture-adapter:/probe:ro" \
             --entrypoint node "$IMAGE" \
-            /probe/ws-probe.cjs ws://127.0.0.1:8080/ws http://127.0.0.1:8080
+            /opt/coding-runtime/test/ws-probe.cjs \
+            ws://127.0.0.1:8080/ws http://127.0.0.1:8080 "$MARKER"
     }
-    check "a keystroke round-trips through tmux" terminal_round_trip
+    check "the terminal socket carries traffic both ways" terminal_carries_traffic
+
+    # Whether those keystrokes actually reached the program is a question for
+    # tmux, not for the socket. capture-pane renders the pane as plain text, so
+    # this holds for a shell showing a command line and for a TUI showing its
+    # prompt box alike — and it runs after the probe has disconnected, so it
+    # also demonstrates the session outliving the browser that opened it.
+    keystrokes_reached_the_program() {
+        session="$(docker exec "$CONTAINER" tmux list-sessions -F '#{session_name}' 2>/dev/null | head -1)"
+        [ -n "$session" ] || { echo "no tmux session exists"; return 1; }
+        for _ in $(seq 1 30); do
+            pane="$(docker exec "$CONTAINER" tmux capture-pane -p -t "$session" 2>/dev/null | tr -d '[:space:]')"
+            case "$pane" in *"$MARKER"*) return 0 ;; esac
+            sleep 1
+        done
+        echo "typed text never appeared in the tmux pane; last capture:"
+        docker exec "$CONTAINER" tmux capture-pane -p -t "$session" 2>&1 | tail -8
+        return 1
+    }
+    check "a keystroke reaches the program under tmux" keystrokes_reached_the_program
 
     docker logs "$CONTAINER" 2>&1 | tail -20
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true

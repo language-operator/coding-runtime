@@ -9,3 +9,6 @@ docs
 # "not found" while the examples/ copies succeeded.
 test
 !test/fixture-adapter
+# Shipped inside the image so an adapter can extract a version-matched suite.
+!test/conformance.sh
+!test/ws-probe.cjs
