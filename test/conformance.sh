@@ -132,9 +132,15 @@ fi
 if [ "$MODE" = base ]; then
     if has_cli; then
         # A base image ships no manifest — an adapter supplies it — so doctor is
-        # expected to report that. Assert the message, not the exit code.
-        check "doctor explains a missing manifest" \
-            run 'coding-runtime doctor 2>&1 | grep -q "runtime.json"'
+        # expected to report that. Capture the output first and assert against
+        # it, rather than piping into `grep -q`: grep is silent by design, so a
+        # failure there tells you nothing about what doctor actually said.
+        doctor_out="$(run 'coding-runtime doctor' 2>&1 || true)"
+        echo "  --- coding-runtime doctor ---"
+        printf '%s\n' "$doctor_out" | sed 's/^/        | /'
+        # shellcheck disable=SC2317  # invoked indirectly, via check
+        doctor_names_manifest() { printf '%s' "$doctor_out" | grep -q 'runtime.json'; }
+        check "doctor explains a missing manifest" doctor_names_manifest
     fi
     echo
     echo "base image: $PASS passed, $FAIL failed"
