@@ -53,6 +53,11 @@ COPY --chmod=755 launch-claude.sh /usr/local/bin/launch-claude
 USER node
 ```
 
+Pin a **released tag, by digest** — never `:latest`, and never a build from
+`main`. Images built from `main` record their version as `main`, which no
+`requires.codingRuntime` range can satisfy, so every boot warns about a version
+mismatch that is not really one. Releases are what adapters are meant to build on.
+
 See [`examples/`](examples/) for working `runtime.json` and `emit.mjs` pairs for
 claude-code and opencode, and [docs/authoring-an-adapter.md](docs/authoring-an-adapter.md)
 for the walkthrough.
