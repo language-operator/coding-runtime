@@ -201,7 +201,7 @@ export function resolveManifest(raw, { env = {}, version = null } = {}) {
 export function loadManifest({ path = MANIFEST_PATH, env = {}, version = null } = {}) {
   if (!existsSync(path)) {
     throw new Error(
-      `no runtime manifest at ${path}. Every adapter image must ship one; see docs/manifest.md`,
+      `no runtime manifest at ${path}. Every adapter image must ship one; see docs/authoring-an-adapter.md`,
     );
   }
 

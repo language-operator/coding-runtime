@@ -32,11 +32,19 @@ trap cleanup EXIT
 
 check() {
     local desc="$1"; shift
-    if "$@" >/dev/null 2>&1; then
+    local out
+    # Captured rather than discarded: a failing check in CI is useless without
+    # the reason, and the container is gone by the time anyone looks.
+    if out="$("$@" 2>&1)"; then
         echo "  ok    $desc"
         PASS=$((PASS + 1))
     else
         echo "  FAIL  $desc"
+        if [ -n "$out" ]; then
+            printf '%s\n' "$out" | sed 's/^/          | /' | tail -12
+        else
+            echo "          | (no output)"
+        fi
         FAIL=$((FAIL + 1))
     fi
 }
@@ -51,6 +59,7 @@ run() {
         -v "$WORKDIR/workspace:/workspace" \
         -v "$WORKDIR/etc-agent:/etc/agent:ro" \
         -e AGENT_NAME=conformance -e AGENT_NAMESPACE=default \
+        -e HOME=/workspace/.home \
         --entrypoint sh "$IMAGE" -c "$1"
 }
 
@@ -64,6 +73,12 @@ mkdir -p "$WORKDIR/workspace" "$WORKDIR/etc-agent"
 # runs as, so grant write access explicitly. In a cluster this is the PVC, which
 # arrives group-writable via fsGroup.
 chmod 777 "$WORKDIR/workspace"
+# These checks bypass the entrypoint, so nothing has resolved HOME for them.
+# Docker leaves HOME as / for a numeric --user, which is read-only here — and a
+# tool that wants to create a config directory (glab does) then fails for a
+# reason that never occurs in a real pod, where the entrypoint sets HOME first.
+mkdir -p "$WORKDIR/workspace/.home"
+chmod 777 "$WORKDIR/workspace/.home"
 
 cat > "$WORKDIR/etc-agent/config.yaml" <<'YAML'
 agent:
