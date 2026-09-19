@@ -1,0 +1,34 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/instructions.md",
+    "contents": "Ship the thing.\n"
+  },
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "provider": {
+        "openai": {
+          "options": {
+            "baseURL": "http://gateway.default.svc.cluster.local:8000/v1",
+            "apiKey": "sk-langop-proxy"
+          },
+          "models": {
+            "claude-sonnet-4-5": {}
+          }
+        }
+      },
+      "model": "openai/claude-sonnet-4-5",
+      "instructions": [
+        "/workspace/.coding-runtime/opencode/instructions.md"
+      ]
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]

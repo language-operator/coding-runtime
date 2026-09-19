@@ -1,0 +1,37 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "provider": {
+        "openai": {
+          "options": {
+            "baseURL": "http://gateway.default.svc.cluster.local:8000/v1",
+            "apiKey": "sk-langop-proxy"
+          },
+          "models": {
+            "claude-sonnet-4-5": {}
+          }
+        }
+      },
+      "model": "openai/claude-sonnet-4-5",
+      "mcp": {
+        "sidecar-tool": {
+          "type": "remote",
+          "url": "http://localhost:8080/mcp"
+        },
+        "service-tool": {
+          "type": "remote",
+          "url": "http://remote.tools.svc.cluster.local:8080/mcp"
+        }
+      }
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]

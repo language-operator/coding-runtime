@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opencode/instructions.md",
+    "contents": "Tone: professional.\nPersonality: Analytical and precise, always cites data sources and uses structured output.\nExpertise: Data analysis, statistical reasoning, and visualization.\n\nYou are a data analyst. Analyze CSV files and generate insights.\nFocus on trends, anomalies, and actionable recommendations.\nAlways cite data sources and use structured output.\n"
+  },
+  {
+    "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
+    "values": {
+      "autoupdate": false,
+      "provider": {
+        "openai": {
+          "options": {
+            "baseURL": "http://gateway.default.svc.cluster.local:8000/v1",
+            "apiKey": "sk-langop-proxy"
+          },
+          "models": {
+            "claude-sonnet-4-5": {}
+          }
+        }
+      },
+      "model": "openai/claude-sonnet-4-5",
+      "mcp": {
+        "mem0-memory": {
+          "type": "remote",
+          "url": "http://mem0-memory.tools.svc.cluster.local:8080/mcp"
+        },
+        "python-executor": {
+          "type": "remote",
+          "url": "http://python-executor.tools.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": [
+        "/workspace/.coding-runtime/opencode/instructions.md"
+      ]
+    },
+    "owns": [
+      "autoupdate",
+      "provider",
+      "model",
+      "mcp",
+      "instructions"
+    ]
+  }
+]
