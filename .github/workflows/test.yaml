@@ -64,5 +64,25 @@ jobs:
           tags: coding-runtime:${{ matrix.variant }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
-      - name: Conformance
+      - name: Conformance (base)
         run: test/conformance.sh coding-runtime:${{ matrix.variant }} base
+
+      # Base mode cannot reach the serving surface, because the base ships no
+      # manifest — so tmux, the pty and the WebSocket bridge would otherwise
+      # first run in whichever adapter migrated first. This builds a minimal
+      # adapter from the *shipped* example manifest and emitter and exercises
+      # the whole path here instead.
+      - name: Build the fixture adapter
+        if: matrix.variant == 'thick'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: test/fixture-adapter/Dockerfile
+          build-args: BASE=coding-runtime:thick
+          push: false
+          load: true
+          tags: coding-runtime-fixture:test
+
+      - name: Conformance (adapter)
+        if: matrix.variant == 'thick'
+        run: test/conformance.sh coding-runtime-fixture:test adapter

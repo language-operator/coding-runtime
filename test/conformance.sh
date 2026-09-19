@@ -18,6 +18,7 @@ set -euo pipefail
 
 IMAGE="${1:?usage: conformance.sh <image> [base|adapter]}"
 MODE="${2:-base}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(mktemp -d)"
 CONTAINER="conformance-$$"
 PASS=0
@@ -230,6 +231,20 @@ if [ "$SURFACE" = terminal ]; then
     ws_is() { [ "$(ws_status "$2")" = "$1" ]; }
     check "same-origin upgrade is accepted"  ws_is 101 http://127.0.0.1:18080
     check "cross-origin upgrade is rejected" ws_is 403 https://evil.example
+
+    # A 101 only proves the handshake. This drives the socket the way a browser
+    # does and requires a keystroke to reach the process under tmux and its
+    # output to come back — the pty, the tmux session and the bridge, end to
+    # end. Run inside the image, sharing the server's network namespace, so it
+    # uses the base's own ws and reaches the terminal on loopback exactly as the
+    # oauth2-proxy sidecar would.
+    terminal_round_trip() {
+        docker run --rm --network "container:$CONTAINER" \
+            -v "$SCRIPT_DIR/fixture-adapter:/probe:ro" \
+            --entrypoint node "$IMAGE" \
+            /probe/ws-probe.cjs ws://127.0.0.1:8080/ws http://127.0.0.1:8080
+    }
+    check "a keystroke round-trips through tmux" terminal_round_trip
 
     docker logs "$CONTAINER" 2>&1 | tail -20
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
