@@ -123,6 +123,13 @@ WORKDIR /opt/coding-runtime
 COPY --from=deps /opt/coding-runtime/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY src ./src
+# The image carries its own conformance suite. An adapter extracts it from the
+# base it was built on, which guarantees the checks match the runtime being
+# checked — and, unlike fetching the script alone, brings the probe it needs:
+#   docker run --rm --entrypoint cat <image> \
+#     /opt/coding-runtime/test/conformance.sh > conformance.sh
+COPY --chmod=755 test/conformance.sh ./test/conformance.sh
+COPY test/ws-probe.cjs ./test/ws-probe.cjs
 COPY etc/tmux.conf /etc/tmux.conf
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 # A wrapper rather than a symlink: through a symlink, argv[1] is the link path
@@ -180,6 +187,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /usr/local/bin/
 # calling getpwuid() to find a home directory fails outright.
 RUN groupadd --gid 1000 agent \
     && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home agent
+
+COPY --chmod=755 test/conformance.sh /opt/coding-runtime/test/conformance.sh
 
 # What thin provides today is the runtime posture: uid 1000 with a passwd entry,
 # tini, uv, git, and the cache/HOME layout resolved against a read-only rootfs.

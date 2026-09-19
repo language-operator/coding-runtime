@@ -127,9 +127,34 @@ const config = normalize({ yamlText, env });
 assert.deepEqual(emit(config, { env }), expected);
 ```
 
-Then run the in-image suite once, which checks the whole posture — uid,
-read-only rootfs, probes, and the cross-origin guard:
+Then run the conformance suite against the built image. Extract it from the base
+your adapter was built on, so the checks match the runtime being checked — and
+so the probe it needs comes with it:
 
 ```bash
-test/conformance.sh my-adapter:test adapter
+docker run --rm --entrypoint cat ghcr.io/language-operator/coding-runtime:<version> \
+  /opt/coding-runtime/test/conformance.sh > conformance.sh
+chmod +x conformance.sh
+./conformance.sh my-adapter:test adapter
 ```
+
+In `adapter` mode it runs the image under the posture the operator actually
+imposes — `--read-only`, `--user 1000:1000`, `--cap-drop ALL`, tmpfs `/tmp` —
+and checks:
+
+- **Posture** — uid 1000 with a passwd entry, a read-only root filesystem, a
+  writable `/tmp` and workspace, UTF-8, `tini`, and git not warning about the
+  current user.
+- **Config** — `doctor` passes, seeding is idempotent, and seeding writes nothing
+  outside `/tmp` and the workspace.
+- **Serving** — `/healthz`, `/readyz` and `/runtime.json` answer, the manifest is
+  redacted, `/ping` is *not* handled (oauth2-proxy would shadow it), and the
+  cross-origin guard accepts a same-origin upgrade while rejecting a foreign one.
+- **The terminal** — the socket carries traffic both ways, and a typed keystroke
+  reaches the program running under tmux.
+
+That last check asks tmux what the pane contains rather than asserting what the
+typed text *did*, because the two are not the same question: a shell executes a
+line, a TUI puts it in a prompt box, and the base exists to serve both. Nothing
+is submitted — no Enter is sent — since a submitted line means something
+different, and potentially something destructive, in every terminal program.
