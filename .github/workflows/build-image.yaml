@@ -55,6 +55,18 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # The flavor suffix applies to the version output too, so thin would
+      # record 0.1.1-python. The suffix names the image tag, not the runtime
+      # version: the Node range check happens to ignore it, but strict semver
+      # reads it as a prerelease below 0.1.1, and PEP 440 rejects it outright —
+      # which the Python port of the range check would hit. Strip it here.
+      - name: Runtime version
+        id: version
+        env:
+          META_VERSION: ${{ steps.meta.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: echo "value=${META_VERSION%"$SUFFIX"}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -64,6 +76,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
