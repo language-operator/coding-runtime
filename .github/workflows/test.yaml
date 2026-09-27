@@ -99,3 +99,9 @@ jobs:
       - name: Conformance (adapter)
         if: matrix.variant == 'thick'
         run: test/conformance.sh coding-runtime-fixture:test adapter
+
+      # A thin adapter has no manifest and no CLI, so the base itself is the
+      # smallest one there is: this keeps adapter mode passable on thin.
+      - name: Conformance (thin adapter)
+        if: matrix.variant == 'thin'
+        run: test/conformance.sh coding-runtime:thin adapter

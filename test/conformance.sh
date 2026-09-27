@@ -148,6 +148,8 @@ else
     echo "== runtime (thin: no Node, contract only) =="
     check "python is present"            run 'python3 --version'
     check "uv is present"                run 'uv --version'
+    check "gh is present"                run 'gh --version'
+    check "glab is present"              run 'glab --version'
     check "a version is recorded"        run '[ -s /opt/coding-runtime/VERSION ]'
 fi
 
@@ -182,20 +184,43 @@ if [ "$MODE" = base ]; then
 fi
 
 echo "== adapter =="
-check "doctor passes"               run 'coding-runtime doctor'
-check "seed writes harness config"  run 'coding-runtime seed && [ -n "$(ls -A /workspace)" ]'
-check "seed is idempotent"          run 'coding-runtime seed && coding-runtime seed 2>&1 | grep -q unchanged'
-# Timestamped against a marker written at container start rather than against
-# a file baked into the image: every file an adapter layer adds is newer than
-# the base's own VERSION, so that reference flagged the adapter's manifest as if
-# seed had written it. What matters is what seed changes at runtime.
-check "seed writes nothing outside /tmp and /workspace" \
-    run 'touch /tmp/.mark
-         coding-runtime seed >/dev/null 2>&1
-         found=$(find / -xdev -newer /tmp/.mark -type f \
-             -not -path "/tmp/*" -not -path "/workspace/*" \
-             -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -5)
-         [ -z "$found" ] || { echo "seed wrote outside the writable paths:"; echo "$found"; exit 1; }'
+# Both bases already provide exactly one user at uid 1000. An adapter that adds
+# its own gives getpwuid() two answers, and which one wins depends on file order.
+check "uid 1000 has exactly one passwd entry" \
+    run 'users=$(getent passwd | awk -F: "\$3 == 1000")
+         [ "$(printf "%s\n" "$users" | wc -l)" = 1 ] || { echo "$users"; exit 1; }'
+# An adapter that replaces ENTRYPOINT loses tini, and nothing reaps orphans.
+# Inspected rather than observed: the thin base's entrypoint runs the adapter's
+# CMD, which may need credentials or a network this suite cannot provide.
+entrypoint_is_tini() {
+    local entrypoint
+    entrypoint="$(docker image inspect --format '{{json .Config.Entrypoint}}' "$IMAGE")"
+    case "$entrypoint" in
+        '["/usr/bin/tini"'*) ;;
+        *) echo "entrypoint is $entrypoint"; return 1 ;;
+    esac
+}
+check "the entrypoint still runs under tini" entrypoint_is_tini
+
+# A thin adapter has no Node CLI: it reads /etc/agent/config.yaml itself, and
+# has no doctor or seed for this suite to exercise.
+if has_cli; then
+    check "doctor passes"               run 'coding-runtime doctor'
+    check "seed writes harness config"  run 'coding-runtime seed && [ -n "$(ls -A /workspace)" ]'
+    check "seed is idempotent"          run 'coding-runtime seed && coding-runtime seed 2>&1 | grep -q unchanged'
+    # Timestamped against a marker written at container start rather than
+    # against a file baked into the image: every file an adapter layer adds is
+    # newer than the base's own VERSION, so that reference flagged the adapter's
+    # manifest as if seed had written it. What matters is what seed changes at
+    # runtime.
+    check "seed writes nothing outside /tmp and /workspace" \
+        run 'touch /tmp/.mark
+             coding-runtime seed >/dev/null 2>&1
+             found=$(find / -xdev -newer /tmp/.mark -type f \
+                 -not -path "/tmp/*" -not -path "/workspace/*" \
+                 -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -5)
+             [ -z "$found" ] || { echo "seed wrote outside the writable paths:"; echo "$found"; exit 1; }'
+fi
 
 SURFACE="$(docker run --rm --entrypoint sh "$IMAGE" -c 'cat /etc/coding-runtime/runtime.json 2>/dev/null' \
     | tr -d ' \n' | grep -o '"surface":"[a-z]*"' | cut -d'"' -f4 || true)"

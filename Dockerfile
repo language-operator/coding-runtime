@@ -181,6 +181,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /usr/local/bin/
+# gh and glab, but not Go: an agent on thin still opens PRs and MRs, and the
+# tokens it is given are only useful with these. Go stays a thick-only toolchain.
+COPY --from=tools /out/usr/local/bin/gh /out/usr/local/bin/glab /usr/local/bin/
 
 # python:3.13-slim has no uid 1000. Without a passwd entry for the uid the
 # operator forces, git warns on every command, ssh complains, and anything
