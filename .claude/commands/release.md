@@ -69,10 +69,20 @@ If the latest tag is *higher* than `package.json`'s version, something is out of
 step: stop and report both, rather than guessing which is authoritative.
 
 **4. Check the compatibility ranges.** Each `examples/*/runtime.json` declares a
-`requires.codingRuntime` range. On a **major** bump those ranges will stop
-matching the new base, so update them in the same commit and mention it in the
-release notes — every adapter in the wild will need the same edit. On a minor or
-patch bump, confirm the ranges still admit the new version and leave them alone.
+`requires.codingRuntime` range. Two separate reasons to change it, and only the
+first depends on the bump type:
+
+- **The range would stop matching.** On a **major** bump the existing ranges
+  exclude the new base, so raise them in the same commit and say so in the
+  release notes — every adapter in the wild needs the same edit.
+- **The floor genuinely rose.** Whatever the bump type, if the example emitters
+  have come to *depend* on something this release introduces, raise the floor to
+  this version. The range is the only thing that tells someone copying an
+  example onto an older base that it will not work there — and the failure is
+  often silent. Check what changed since the last tag: a new `ctx` helper an
+  example now calls, or a writer semantic an example now relies on, both count.
+
+Otherwise confirm the ranges still admit the new version and leave them alone.
 
 **5. Bump the version**, unless step 3 determined the current version is already
 the one to release. `npm version <type> --no-git-tag-version` updates
