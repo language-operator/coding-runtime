@@ -159,9 +159,9 @@ test('external tool headers pass through with $(NAME) references untouched', () 
   const doc = normalize({ yamlText, env, ...FIXED_INPUTS });
 
   const external = doc.tools.find((t) => t.name === 'control-plane');
-  assert.deepEqual(external.headers, {
+  assert.deepEqual(external.headers, { Authorization: 'Bearer $(CONTROL_PLANE_TOKEN)', 'X-Agent': 'external' });
+  assert.deepEqual(doc.tools.find((t) => t.name === 'partial').headers, {
     Authorization: 'Bearer $(CONTROL_PLANE_TOKEN)',
-    'X-Agent': 'external',
     'X-Optional': '$(MISSING_TOKEN)',
   });
   // Normalization never substitutes: the emitter decides the client's syntax,

@@ -22,21 +22,44 @@ const CLAUDE_JSON_OWNS = [
   'oauthAccount',
 ];
 
+// Variables Claude Code reads as empty inside a remote MCP server's `headers`,
+// so its own credentials cannot be leaked to a third-party server. A reference
+// to one silently sends an empty token and the server 401s, so the emitter
+// refuses it up front (HEADERS_RESERVED) and asks for the credential under
+// another name. Best-effort mirror of Claude Code's list; extend as needed.
+const CLAUDE_RESERVED_VARIABLES = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_CUSTOM_HEADERS',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'AWS_BEARER_TOKEN_BEDROCK',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+];
+
 export function emit(config, { env = {}, renderHeaders = null } = {}) {
   const configDir = env.CLAUDE_CONFIG_DIR ?? `${config.paths.workspace}/.claude`;
 
   // An external server's headers go in as `${NAME}`, which Claude Code expands
   // from the environment when it connects, so the token is never written into
-  // .claude.json. A header whose variable is unset is dropped with a warning.
-  // Without the base runtime's helper (a pre-0.2 base) the headers are omitted,
-  // which is the same refusal the server gave before headers existed.
+  // .claude.json. Rendering is all-or-nothing: a server whose headers cannot
+  // all be rendered is left out (the helper warns), never configured without
+  // auth to 401 unexplained. A base runtime without the helper cannot honour
+  // headers at all, and failing the seed is the only way to say so.
   const mcpServer = (tool) => {
-    const server = { type: 'http', url: tool.endpoint };
-    const headers = renderHeaders && tool.headers
-      ? renderHeaders(tool.headers, { path: `tools.${tool.name}`, rewrite: (name) => `\${${name}}` })
-      : null;
-    if (headers) server.headers = headers;
-    return server;
+    if (!tool.headers) return { type: 'http', url: tool.endpoint };
+    if (!renderHeaders) {
+      throw new Error(`tool '${tool.name}' has headers, which need coding-runtime's ctx.renderHeaders; rebuild on a base that provides it`);
+    }
+    const headers = renderHeaders(tool.headers, {
+      path: `tools.${tool.name}`,
+      rewrite: (name) => `\${${name}}`,
+      clientSyntax: /\$\{/,
+      reserved: CLAUDE_RESERVED_VARIABLES,
+    });
+    return headers ? { type: 'http', url: tool.endpoint, headers } : null;
   };
 
   // --- settings.json: model selection and the bell we rely on for the tab title
@@ -50,10 +73,9 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   // absolute path and those keys cannot be spelled as dotted strings.
   const values = [];
 
-  if (config.tools.length > 0) {
-    values.push(['mcpServers', Object.fromEntries(
-      config.tools.map((tool) => [tool.name, mcpServer(tool)]),
-    )]);
+  const mcpServers = config.tools.map((tool) => [tool.name, mcpServer(tool)]).filter(([, server]) => server);
+  if (mcpServers.length > 0) {
+    values.push(['mcpServers', Object.fromEntries(mcpServers)]);
   }
 
   // Pre-trust the workspace so Claude Code does not prompt on first run. The

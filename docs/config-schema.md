@@ -95,10 +95,16 @@ untouched — the secret must not appear in the `config.json` debug snapshot —
 and the emitter renders them with `ctx.renderHeaders`, choosing the client's
 own reference syntax where it has one (Claude Code `${NAME}`, OpenCode
 `{env:NAME}`) or resolving from the environment at seed time where it does not.
-A header whose variable is unset is dropped with a `HEADER_DROPPED` warning,
-never sent as `$(NAME)` literally. `MCP_SERVERS` never lists a server that
-needs headers, so the config file is the only source for them.
+Rendering is all-or-nothing per tool: if any header references a variable
+that is unset or empty (or one the client refuses to expand, such as Claude
+Code's own credential names), the whole server is left out of the client's
+config with one `HEADERS_UNRESOLVED` / `HEADERS_RESERVED` warning, rather than
+configured without auth to fail with an unexplained 401. `$(NAME)` is never
+sent literally. Resolving at seed time writes the secret into the harness
+config on the workspace PVC, so an emitter should prefer `rewrite` whenever the
+client has a syntax. `MCP_SERVERS` never lists a server that needs headers, so
+the config file is the only source for them.
 
-**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir capped at 1Gi
-that counts against the container's memory limit. Nothing cache-shaped may
-live there.
+**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir with no
+`sizeLimit`, so filling it OOM-kills the pod rather than returning `ENOSPC`.
+Nothing cache-shaped may live there.

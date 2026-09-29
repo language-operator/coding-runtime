@@ -248,8 +248,8 @@ function derivePaths(env, overrides = {}) {
     workDir: repoDir ?? workspace,
     home: overrides.home ?? `${workspace}/.home`,
     stateDir: overrides.stateDir ?? `${workspace}/.coding-runtime`,
-    // Caches belong on the PVC: /tmp is a memory-medium emptyDir capped at
-    // 1Gi that counts against the container's memory limit.
+    // Caches belong on the PVC: /tmp is a memory-medium emptyDir with no
+    // sizeLimit, so filling it OOM-kills the pod instead of returning ENOSPC.
     tmpDir: overrides.tmpDir ?? `${workspace}/.tmp`,
     cacheHome: overrides.cacheHome ?? `${workspace}/.cache`,
     dataHome: overrides.dataHome ?? `${workspace}/.local/share`,

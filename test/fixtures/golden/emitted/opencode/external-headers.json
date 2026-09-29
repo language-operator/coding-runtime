@@ -23,6 +23,7 @@
             "Authorization": "Bearer {env:CONTROL_PLANE_TOKEN}",
             "X-Agent": "external"
           },
+          "oauth": false,
           "timeout": 30000
         },
         "in-cluster": {
