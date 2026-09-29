@@ -3,7 +3,7 @@
   "name": "claude-code",
   "displayName": "Claude Code",
   "role": "main",
-  "requires": { "codingRuntime": ">=0.1.0 <1.0.0" },
+  "requires": { "codingRuntime": ">=0.1.2 <1.0.0" },
   "env": {
     "CLAUDE_CONFIG_DIR": "${WORKSPACE}/.claude"
   },
