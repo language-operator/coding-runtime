@@ -6,8 +6,8 @@
       "model": "claude-sonnet-4-5"
     },
     "owns": [
-      "model",
-      "preferredNotifChannel"
+      "preferredNotifChannel",
+      "model"
     ]
   },
   {
@@ -54,9 +54,7 @@
         "projects",
         "/workspace",
         "hasCompletedProjectOnboarding"
-      ],
-      "hasCompletedOnboarding",
-      "oauthAccount"
+      ]
     ]
   }
 ]

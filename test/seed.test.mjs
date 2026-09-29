@@ -69,6 +69,15 @@ models:
     endpoint: http://gateway.default.svc.cluster.local:8000
 `;
 
+// An agent whose LanguageAgent selects no model: the harness picks its own, and
+// the runtime must leave that choice alone.
+const NO_MODELS_CONFIG = `
+agent:
+  name: seed-test
+  namespace: default
+instructions: Review the pull request.
+`;
+
 test('seed turns the operator config into the harness native files', async () => {
   const { workspace, env } = stage({ configYaml: FULL_CONFIG });
   const log = recorder();
@@ -100,6 +109,49 @@ test('seed preserves user state written by the harness itself', async () => {
   const after = JSON.parse(readFileSync(claudeJsonPath, 'utf8'));
   assert.equal(after.userSettings.theme, 'dark', 'keys the runtime does not own must survive');
   assert.ok(after.mcpServers.mem0, 'managed keys are still refreshed');
+  // The test staged a /login and then never checked it. Without this line the
+  // suite stayed green while every restart deleted the account block and sent
+  // the user back through onboarding with perfectly valid credentials on disk.
+  assert.equal(
+    after.oauthAccount?.emailAddress,
+    'real@example.com',
+    'an interactive /login must survive a re-seed',
+  );
+});
+
+test('a model chosen with /model survives when the operator configures none', async () => {
+  const { workspace, env } = stage({ configYaml: NO_MODELS_CONFIG });
+  await main(['seed'], { env, log: recorder() });
+
+  // Stand in for the user running /model between restarts.
+  const settingsPath = join(workspace, '.claude', 'settings.json');
+  const existing = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  assert.equal(existing.model, undefined, 'no operator model means the runtime sets none');
+  writeFileSync(settingsPath, JSON.stringify({ ...existing, model: 'claude-opus-5' }));
+
+  await main(['seed'], { env, log: recorder() });
+
+  const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  assert.equal(after.model, 'claude-opus-5', 'the runtime has no opinion, so it must not clear one');
+  assert.equal(after.preferredNotifChannel, 'terminal_bell', 'owned keys are still reconciled');
+});
+
+test('an operator-configured model still wins over a stale value', async () => {
+  const { workspace, env } = stage({ configYaml: FULL_CONFIG });
+  await main(['seed'], { env, log: recorder() });
+
+  const settingsPath = join(workspace, '.claude', 'settings.json');
+  const seeded = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  assert.ok(seeded.model, 'the operator configured a model, so one is set');
+
+  writeFileSync(settingsPath, JSON.stringify({ ...seeded, model: 'something-else' }));
+  await main(['seed'], { env, log: recorder() });
+
+  assert.equal(
+    JSON.parse(readFileSync(settingsPath, 'utf8')).model,
+    seeded.model,
+    'a key the operator does configure is still reconciled',
+  );
 });
 
 test('removing the last tool removes its MCP server entry', async () => {
