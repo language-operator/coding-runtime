@@ -61,6 +61,14 @@ root otherwise — which is where a harness should open.
 A module exporting `emit(config, ctx)` that returns write descriptors. It is a
 pure function of its arguments: no environment reads, no clock, no filesystem.
 Anything environmental arrives through `ctx.env`, so a test can supply it.
+`ctx.renderHeaders(headers, { path, rewrite, clientSyntax, reserved })` renders
+an external tool's `headers` (see [config-schema.md](config-schema.md)): pass
+`rewrite` to emit the client's own env reference syntax, omit it to resolve
+values at seed time (which writes the secret onto the PVC — only for a client
+with no such syntax). It returns `null` when any header cannot be rendered, and
+the emitter must then leave that server out rather than configure it without
+auth. Build the same `ctx` in tests with `emitterContext({ env, onWarn })` from
+`src/emit.mjs`.
 
 ```js
 export function emit(config, { env = {} } = {}) {
@@ -123,8 +131,9 @@ building an image:
 
 ```js
 import { normalize } from 'coding-runtime/src/config/normalize.mjs';
+import { emitterContext } from 'coding-runtime/src/emit.mjs';
 const config = normalize({ yamlText, env });
-assert.deepEqual(emit(config, { env }), expected);
+assert.deepEqual(emit(config, emitterContext({ env })), expected);
 ```
 
 Then run the conformance suite against the built image. Extract it from the base

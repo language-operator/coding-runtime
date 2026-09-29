@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadManifest, MANIFEST_PATH } from './manifest.mjs';
 import { normalize } from './config/normalize.mjs';
 import { ensureDir, writeFileAtomic } from './config/writers.mjs';
-import { loadEmitter, applyWrites } from './emit.mjs';
+import { loadEmitter, applyWrites, emitterContext } from './emit.mjs';
 import { parseAllowedOrigins } from './serve/origin.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -161,7 +161,8 @@ async function cmdSeed({ env, log }) {
     return 0;
   }
 
-  const writes = applyWrites(await emit(config, { env: resolved }), { onWarn: (w) => reportWarnings([w], log) });
+  const onWarn = (w) => reportWarnings([w], log);
+  const writes = applyWrites(await emit(config, emitterContext({ env: resolved, onWarn })), { onWarn });
   for (const w of writes) {
     log.log(`${w.changed ? 'wrote' : 'unchanged'} ${w.path}`);
   }

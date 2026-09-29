@@ -163,6 +163,36 @@ function isLocalUrl(url) {
   }
 }
 
+/**
+ * Headers for an external MCP server, as a string map or null. Values keep the
+ * operator's `$(NAME)` references untouched: substituting them is the emitter's
+ * decision (see headers.mjs), because the right answer differs per client.
+ */
+function normalizeHeaders(name, raw, warnings) {
+  if (raw == null) return null;
+  if (!isMapping(raw)) {
+    warnings.push({
+      code: 'UNEXPECTED_SHAPE',
+      path: `tools.${name}.headers`,
+      message: `tool '${name}' headers should be a mapping of header name to value; ignoring`,
+    });
+    return null;
+  }
+  const headers = {};
+  for (const [header, value] of Object.entries(raw)) {
+    if (value == null || typeof value === 'object') {
+      warnings.push({
+        code: 'UNEXPECTED_SHAPE',
+        path: `tools.${name}.headers.${header}`,
+        message: `header '${header}' of tool '${name}' should be a string; ignoring`,
+      });
+      continue;
+    }
+    headers[header] = String(value);
+  }
+  return Object.keys(headers).length > 0 ? headers : null;
+}
+
 function normalizeTools(config, env, warnings) {
   const tools = [];
   const fromConfig = isMapping(config.tools) ? config.tools : {};
@@ -190,6 +220,7 @@ function normalizeTools(config, env, warnings) {
       // tool looks the same, and the /mcp path is already part of the endpoint.
       transport: 'streamable-http',
       local: isLocalUrl(endpoint),
+      headers: normalizeHeaders(name, tool.headers, warnings),
     });
   }
 
@@ -200,7 +231,8 @@ function normalizeTools(config, env, warnings) {
       warnings.push({ code: 'TOOL_SKIPPED', path: 'MCP_SERVERS', message: `'${url}' is not an HTTP URL; skipping` });
       continue;
     }
-    tools.push({ name: nameFromUrl(url), endpoint: url, protocol: 'mcp', transport: 'streamable-http', local: isLocalUrl(url) });
+    // MCP_SERVERS never lists a server that needs headers; there is no room for them.
+    tools.push({ name: nameFromUrl(url), endpoint: url, protocol: 'mcp', transport: 'streamable-http', local: isLocalUrl(url), headers: null });
   }
   return tools;
 }

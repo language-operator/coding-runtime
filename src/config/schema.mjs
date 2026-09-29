@@ -23,7 +23,7 @@ export const AGENT_CONFIG_SCHEMA = {
   },
   agent: ['name', 'namespace'],
   persona: ['name', 'tone', 'personality', 'expertise'],
-  tool: ['endpoint', 'protocol'],
+  tool: ['endpoint', 'protocol', 'headers'],
   model: ['role', 'provider', 'model', 'endpoint', 'priority'],
 };
 

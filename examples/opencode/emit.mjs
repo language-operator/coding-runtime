@@ -11,8 +11,36 @@
  * qualified id an agent selects is always `openai/<model id>`.
  */
 
-export function emit(config) {
+/**
+ * opencode's remote MCP default is 5000 ms to fetch a server's tools, too short
+ * for an external server that may sit behind a control plane and wait on a
+ * reconcile; header-bearing (external) entries get this instead.
+ */
+const EXTERNAL_TIMEOUT_MS = 30000;
+
+export function emit(config, { renderHeaders = null } = {}) {
   const configDir = config.paths.stateDir ? `${config.paths.stateDir}/opencode` : '/etc/opencode';
+
+  // An external server's headers go in as `{env:NAME}`, opencode's own
+  // environment reference, so the token is never written into opencode.jsonc.
+  // Rendering is all-or-nothing: a server whose headers cannot all be rendered
+  // is left out (the helper warns), never configured without auth to 401
+  // unexplained. `oauth: false` because opencode otherwise auto-detects OAuth
+  // on a remote server and could send a headless agent into a browser flow it
+  // cannot complete, even with a correct bearer header. A base runtime without
+  // the helper cannot honour headers at all; failing the seed says so.
+  const mcpServer = (tool) => {
+    if (!tool.headers) return { type: 'remote', url: tool.endpoint };
+    if (!renderHeaders) {
+      throw new Error(`tool '${tool.name}' has headers, which need coding-runtime's ctx.renderHeaders; rebuild on a base that provides it`);
+    }
+    const headers = renderHeaders(tool.headers, {
+      path: `tools.${tool.name}`,
+      rewrite: (name) => `{env:${name}}`,
+      clientSyntax: /\{(env|file):/,
+    });
+    return headers ? { type: 'remote', url: tool.endpoint, headers, oauth: false, timeout: EXTERNAL_TIMEOUT_MS } : null;
+  };
   const writes = [];
   const values = { autoupdate: false };
   const owns = ['autoupdate', 'provider', 'model', 'mcp', 'instructions'];
@@ -30,10 +58,9 @@ export function emit(config) {
     values.model = `openai/${config.models.primary.id}`;
   }
 
-  if (config.tools.length > 0) {
-    values.mcp = Object.fromEntries(
-      config.tools.map((tool) => [tool.name, { type: 'remote', url: tool.endpoint }]),
-    );
+  const mcpServers = config.tools.map((tool) => [tool.name, mcpServer(tool)]).filter(([, server]) => server);
+  if (mcpServers.length > 0) {
+    values.mcp = Object.fromEntries(mcpServers);
   }
 
   // Instructions and persona become standing context rather than a first
