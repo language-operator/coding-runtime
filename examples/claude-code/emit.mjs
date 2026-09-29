@@ -3,8 +3,17 @@
  *
  * Translates the normalized document into the two files Claude Code reads.
  * Both are merged rather than overwritten: they sit on the workspace PVC and
- * accumulate real user state — credentials from an interactive `/login`,
- * per-project history — that a re-seed on every pod restart must not discard.
+ * accumulate real user state — the account block an interactive `/login`
+ * writes, a model chosen with `/model`, per-project history — that a re-seed
+ * on every pod restart must not discard.
+ *
+ * Merging alone does not achieve that, which is the trap this emitter fell into
+ * once already: `owns` means "reconcile this key every boot", and a key listed
+ * there but absent from `values` is *deleted*. So a key may be owned only when
+ * its absence genuinely means "remove it" — dropping the last tool has to
+ * remove the MCP server entry — and a key the runtime supplies only sometimes
+ * must be owned only when it is actually supplied. Claiming one unconditionally
+ * deletes whatever the user established, on every single restart.
  *
  * Note what is deliberately *not* set: ANTHROPIC_BASE_URL and
  * ANTHROPIC_AUTH_TOKEN. Claude Code authenticates against api.anthropic.com
@@ -14,12 +23,19 @@
  * product, not an oversight; see the runtime's README.
  */
 
+// Keys reconciled on every seed, because for these an absence really does mean
+// "remove it": the operator dropping its last tool must take the MCP server
+// entry with it. The trust markers are always supplied, so owning them costs
+// nothing and keeps them honest if that ever changes.
+//
+// hasCompletedOnboarding and oauthAccount are deliberately NOT here. They are
+// supplied only in CLAUDE_CODE_OAUTH_TOKEN mode, and are owned only in that
+// same branch — see emit(). Under an interactive `/login` the runtime has no
+// opinion about them, and having no opinion has to mean leaving them alone.
 const CLAUDE_JSON_OWNS = [
   'mcpServers',
   ['projects', '/workspace', 'hasTrustDialogAccepted'],
   ['projects', '/workspace', 'hasCompletedProjectOnboarding'],
-  'hasCompletedOnboarding',
-  'oauthAccount',
 ];
 
 // Variables Claude Code reads as empty inside a remote MCP server's `headers`,
@@ -66,12 +82,23 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   const settings = {
     preferredNotifChannel: 'terminal_bell',
   };
-  if (config.models.primary) settings.model = config.models.primary.id;
+  // Owned only when the operator selects a model. With none configured the
+  // runtime has no opinion, and `model` is then whatever the user picked with
+  // `/model` — owning it unconditionally would delete that choice on the next
+  // restart. The cost is that a model the operator stops configuring lingers
+  // rather than being cleared, which `/model` can undo; the reverse mistake
+  // silently discards a user's setting and looks like a bug in Claude Code.
+  const settingsOwns = ['preferredNotifChannel'];
+  if (config.models.primary) {
+    settings.model = config.models.primary.id;
+    settingsOwns.push('model');
+  }
 
   // --- .claude.json: MCP servers, trust, onboarding
   // Entry form rather than an object, because the `projects` map is keyed by
   // absolute path and those keys cannot be spelled as dotted strings.
   const values = [];
+  const owns = [...CLAUDE_JSON_OWNS];
 
   const mcpServers = config.tools.map((tool) => [tool.name, mcpServer(tool)]).filter(([, server]) => server);
   if (mcpServers.length > 0) {
@@ -92,6 +119,7 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   // display only; the token is the actual credential.
   if (env.CLAUDE_CODE_OAUTH_TOKEN) {
     const name = config.agent.name ?? 'agent';
+    owns.push('hasCompletedOnboarding', 'oauthAccount');
     values.push(['hasCompletedOnboarding', true]);
     values.push(['oauthAccount', {
       accountUuid: '00000000-0000-0000-0000-000000000000',
@@ -105,8 +133,8 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   }
 
   return [
-    { path: `${configDir}/settings.json`, values: settings, owns: ['model', 'preferredNotifChannel'] },
-    { path: `${configDir}/.claude.json`, values, owns: CLAUDE_JSON_OWNS },
+    { path: `${configDir}/settings.json`, values: settings, owns: settingsOwns },
+    { path: `${configDir}/.claude.json`, values, owns },
   ];
 }
 
