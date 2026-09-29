@@ -18,7 +18,31 @@
  */
 const EXTERNAL_TIMEOUT_MS = 30000;
 
-export function emit(config, { renderHeaders = null } = {}) {
+/**
+ * The gateway credential, as opencode should see it.
+ *
+ * When the operator issued a per-agent key, write opencode's own environment
+ * reference rather than the value: opencode.jsonc lives on the workspace
+ * volume, so resolving here would put the credential on disk for no gain.
+ * Without a key, or on a base too old to render references, fall back to the
+ * shared placeholder — the behaviour before per-agent keys existed.
+ *
+ * Note this falls back where `mcpServer` below throws. A header-bearing server
+ * configured without its header fails unexplained, so refusing to seed is the
+ * only honest signal; a missing gateway key costs attribution and nothing else,
+ * and failing the boot over it would make an optional feature a hard dependency
+ * on the base version.
+ */
+function gatewayKey(config, renderRef) {
+  if (!config.gateway.apiKeyRef || !renderRef) return config.gateway.apiKey;
+  return renderRef(config.gateway.apiKeyRef, {
+    path: 'gateway.apiKey',
+    rewrite: (name) => `{env:${name}}`,
+    clientSyntax: /\{(env|file):/,
+  }) ?? config.gateway.apiKey;
+}
+
+export function emit(config, { renderHeaders = null, renderRef = null } = {}) {
   const configDir = config.paths.stateDir ? `${config.paths.stateDir}/opencode` : '/etc/opencode';
 
   // An external server's headers go in as `{env:NAME}`, opencode's own
@@ -45,10 +69,20 @@ export function emit(config, { renderHeaders = null } = {}) {
   const values = { autoupdate: false };
   const owns = ['autoupdate', 'provider', 'model', 'mcp', 'instructions'];
 
+  // Every owned key below is supplied on every run, null included. opencode.jsonc
+  // holds no user state, so the runtime can state its whole intent each time —
+  // and an explicit null removes a key regardless of provenance, which is what
+  // keeps a withdrawn model or tool from lingering after a base upgrade that
+  // has no record of ever writing it.
+  values.provider = null;
+  values.model = null;
+  values.mcp = null;
+  values.instructions = null;
+
   if (config.gateway) {
     values.provider = {
       openai: {
-        options: { baseURL: config.gateway.openaiBaseUrl, apiKey: config.gateway.apiKey },
+        options: { baseURL: config.gateway.openaiBaseUrl, apiKey: gatewayKey(config, renderRef) },
         models: Object.fromEntries(config.models.ordered.map((m) => [m.id, {}])),
       },
     };

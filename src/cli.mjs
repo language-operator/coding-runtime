@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadManifest, MANIFEST_PATH } from './manifest.mjs';
 import { normalize } from './config/normalize.mjs';
 import { ensureDir, writeFileAtomic } from './config/writers.mjs';
+import { openProvenance } from './config/provenance.mjs';
 import { loadEmitter, applyWrites, emitterContext } from './emit.mjs';
 import { parseAllowedOrigins } from './serve/origin.mjs';
 
@@ -162,9 +163,20 @@ async function cmdSeed({ env, log }) {
   }
 
   const onWarn = (w) => reportWarnings([w], log);
-  const writes = applyWrites(await emit(config, emitterContext({ env: resolved, onWarn })), { onWarn });
+  const provenance = openProvenance(manifest.paths.stateDir, { onWarn });
+
+  const writes = applyWrites(await emit(config, emitterContext({ env: resolved, onWarn })), { onWarn, provenance });
   for (const w of writes) {
     log.log(`${w.changed ? 'wrote' : 'unchanged'} ${w.path}`);
+  }
+
+  // After the config files, never before: a failure here leaves the next run
+  // without a record for what was just written, which costs a delayed cleanup
+  // rather than someone's login state.
+  try {
+    provenance.save();
+  } catch (err) {
+    log.warn(`could not record what was written (${err.message}); owned keys will not be cleaned up until a later seed succeeds`);
   }
   return 0;
 }

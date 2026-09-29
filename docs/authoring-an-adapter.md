@@ -82,6 +82,19 @@ export function emit(config, { env = {} } = {}) {
 }
 ```
 
+### Rendering `$(NAME)` references
+
+`ctx.renderHeaders` and `ctx.renderRef` turn the operator's `$(NAME)` syntax
+into a client's own — `${NAME}` for Claude Code, `{env:NAME}` for opencode — or
+resolve it from the environment for a client that has none. Prefer rewriting:
+a reference keeps the credential out of the config file on the workspace volume.
+
+Both fail closed, returning `null` when a reference is unset or the client
+refuses to expand it. Whether that should fail the seed is yours to decide: an
+MCP server configured without its auth header 401s unexplained, so refusing to
+seed is the honest signal; a gateway key that only affects usage attribution is
+better fallen back on than turned into a boot dependency.
+
 ### Descriptors
 
 - `{ path, values, owns }` — merge managed keys into a JSON file.
@@ -90,14 +103,41 @@ export function emit(config, { env = {} } = {}) {
 
 ### `owns` is the important part
 
-`owns` lists every path the runtime manages in that file. A path listed in
-`owns` but absent from `values` is **deleted**. That is what makes removing the
-last tool from a `LanguageAgent` actually remove its MCP server entry, rather
-than leaving the agent calling a tool that no longer exists — the case every
-hand-rolled merge in the four adapters got wrong or handled ad hoc.
+`owns` is a **static** list of every path the runtime manages in that file —
+static because it describes the adapter, not what happened to be configured on
+a given boot. What varies is `values`:
+
+| `values` says | outcome |
+|---|---|
+| a value | set it |
+| `null` | remove it, whoever last wrote it |
+| nothing | no opinion this run — removed **only** if the value on disk is still the one this runtime wrote |
+
+That last row is what makes a static `owns` safe. Ownership is a claim on the
+keys this runtime writes, not on the user's edits: a model the user picked with
+`/model`, or an onboarding marker an interactive login wrote, is never deleted
+by a runtime that did not write it. The record lives in
+`${STATE_DIR}/owned.json` and holds salted hashes, never values.
 
 Setting a key without declaring it in `owns` throws, because such a key could
 be written but never cleaned up.
+
+#### State it, don't imply it
+
+For a key the runtime owns **in full**, supply it on every run — `null` when
+there is nothing to set:
+
+```js
+values.push(['mcpServers', tools.length > 0 ? servers : null]);
+```
+
+Omitting it instead is the mistake worth naming. A key that is never supplied
+never gains a provenance record, and a key with no record is never deleted — so
+a server the operator withdrew *before* the adapter moved to a provenance-aware
+base would sit in the file forever, not merely for a boot.
+
+Omit a key only where the runtime genuinely has no opinion, which is exactly
+where you want the user's value left alone.
 
 `values` may be an object, or an array of `[path, value]` entries when a key
 needs explicit segments — Claude Code keys its `projects` map by absolute path,

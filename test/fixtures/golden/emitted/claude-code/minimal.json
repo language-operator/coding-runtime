@@ -5,12 +5,17 @@
       "preferredNotifChannel": "terminal_bell"
     },
     "owns": [
-      "preferredNotifChannel"
+      "preferredNotifChannel",
+      "model"
     ]
   },
   {
     "path": "/workspace/.claude/.claude.json",
     "values": [
+      [
+        "mcpServers",
+        null
+      ],
       [
         [
           "projects",
@@ -39,7 +44,9 @@
         "projects",
         "/workspace",
         "hasCompletedProjectOnboarding"
-      ]
+      ],
+      "hasCompletedOnboarding",
+      "oauthAccount"
     ]
   }
 ]

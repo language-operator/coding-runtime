@@ -19,6 +19,7 @@
         }
       },
       "model": "openai/claude-sonnet-4-5",
+      "mcp": null,
       "instructions": [
         "/workspace/.coding-runtime/opencode/instructions.md"
       ]

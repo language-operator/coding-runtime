@@ -102,3 +102,51 @@ export function renderHeaders(headers, {
   }
   return Object.keys(out).length > 0 ? out : null;
 }
+
+/**
+ * Render a single `$(NAME)`-bearing string for a client.
+ *
+ * The same fail-closed rule as headers — an unset or refused reference yields
+ * null rather than a half-substituted string — for the places a reference
+ * stands alone rather than in a map. The gateway API key is the first of those.
+ *
+ * @returns {string|null}
+ */
+export function renderRef(value, {
+  env = {}, rewrite = null, clientSyntax = null, reserved = [], onWarn = () => {}, path = 'value',
+} = {}) {
+  if (value == null) return null;
+  const text = String(value);
+  const lookup = (name) => (Object.hasOwn(env, name) && env[name] !== '' ? String(env[name]) : undefined);
+
+  const unset = [];
+  const refused = [];
+  for (const m of text.matchAll(envRef())) {
+    if (reserved.includes(m[1])) refused.push(m[1]);
+    else if (lookup(m[1]) === undefined) unset.push(m[1]);
+  }
+
+  if (unset.length > 0 || refused.length > 0) {
+    const [code, names, why] = unset.length > 0
+      ? ['REF_UNRESOLVED', unset, 'unset environment variable(s)']
+      : ['REF_RESERVED', refused, 'variable(s) this client refuses to expand'];
+    onWarn({
+      code,
+      path,
+      message: `${path} references ${why} ${names.map((n) => `$(${n})`).join(', ')}; falling back to the default`,
+    });
+    return null;
+  }
+
+  if (clientSyntax && clientSyntax.test(text.replace(envRef(), ''))) {
+    onWarn({
+      code: 'REF_LITERAL_SYNTAX',
+      path,
+      message: `${path} contains text the client will interpolate; the value used may differ from the spec`,
+    });
+  }
+
+  // Function-form replace on purpose: a string replacement would reinterpret
+  // `$&` and friends inside a resolved secret.
+  return text.replace(envRef(), (_, ref) => (rewrite ? rewrite(ref) : lookup(ref)));
+}

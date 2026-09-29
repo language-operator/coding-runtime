@@ -182,8 +182,12 @@ test('claude-code refuses a header that references one of its own credential var
   const env = { ANTHROPIC_API_KEY: 'set-but-unusable' };
   const warnings = [];
   const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env, onWarn: (w) => warnings.push(w) }));
-  // Claude Code would expand it to empty and the server would 401 with no explanation.
-  assert.ok(!writes.find((w) => w.path.endsWith('.claude.json')).values.some(([key]) => key === 'mcpServers'));
+  // Claude Code would expand it to empty and the server would 401 with no
+  // explanation. `mcpServers` is still supplied — as null, which removes it —
+  // because this map is owned in full and an omission would leave whatever was
+  // there before in place.
+  const claudeJson = writes.find((w) => w.path.endsWith('.claude.json'));
+  assert.deepEqual(claudeJson.values.find(([key]) => key === 'mcpServers'), ['mcpServers', null]);
   assert.deepEqual(warnings.map((w) => w.code), ['HEADERS_RESERVED']);
 });
 
@@ -194,3 +198,27 @@ function findMcpServers(adapter, writes) {
   }
   return writes.find((w) => w.path.endsWith('opencode.jsonc')).values.mcp;
 }
+
+test('opencode writes the gateway key as a reference, not a credential', async () => {
+  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
+  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
+  const SECRET = 'sk-langop-agent7.deadbeefcafe';
+  const env = { MODEL_API_KEY: SECRET };
+
+  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
+
+  assert.equal(writes.at(-1).values.provider.openai.options.apiKey, '{env:MODEL_API_KEY}');
+  assert.ok(!JSON.stringify(writes).includes(SECRET), 'opencode.jsonc lives on the PVC; the key must not');
+});
+
+test('opencode falls back to the placeholder on a base without renderRef', async () => {
+  // An adapter image can ship a newer emitter than its base. Losing per-agent
+  // attribution is acceptable; failing the boot over it is not.
+  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
+  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
+  const env = { MODEL_API_KEY: 'sk-real' };
+
+  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
+
+  assert.equal(writes.at(-1).values.provider.openai.options.apiKey, 'sk-langop-proxy');
+});
