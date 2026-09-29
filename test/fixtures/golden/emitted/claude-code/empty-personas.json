@@ -14,6 +14,10 @@
     "path": "/workspace/.claude/.claude.json",
     "values": [
       [
+        "mcpServers",
+        null
+      ],
+      [
         [
           "projects",
           "/workspace",
@@ -41,7 +45,9 @@
         "projects",
         "/workspace",
         "hasCompletedProjectOnboarding"
-      ]
+      ],
+      "hasCompletedOnboarding",
+      "oauthAccount"
     ]
   }
 ]

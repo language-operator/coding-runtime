@@ -30,7 +30,8 @@
           "type": "remote",
           "url": "http://tool.default.svc.cluster.local:8080/mcp"
         }
-      }
+      },
+      "instructions": null
     },
     "owns": [
       "autoupdate",

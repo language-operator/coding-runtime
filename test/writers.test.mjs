@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { writeManagedJson, writeOwnedFile, readJsonOr } from '../src/config/writers.mjs';
+import { openProvenance } from '../src/config/provenance.mjs';
 
 const scratch = () => mkdtempSync(join(tmpdir(), 'cr-writers-'));
 
@@ -23,16 +24,21 @@ test('managed keys are merged without disturbing user state', () => {
   assert.deepEqual(result.mcp.servers, { fresh: { url: 'http://fresh' } }, 'managed keys are replaced wholesale');
 });
 
-test('an owned key that is no longer set is removed', () => {
+test('an owned key this runtime wrote is removed once it stops being supplied', () => {
   const dir = scratch();
   const path = join(dir, 'settings.json');
-  writeFileSync(path, JSON.stringify({ model: 'old-model', theme: 'dark' }));
+  const provenance = openProvenance(dir);
+  writeFileSync(path, JSON.stringify({ theme: 'dark' }));
+
+  // First seed writes the model and records having done so.
+  writeManagedJson(path, { values: { model: 'old-model' }, owns: ['model'], provenance });
+  assert.equal(JSON.parse(readFileSync(path, 'utf8')).model, 'old-model');
 
   // The LanguageAgent dropped its models section: `model` must go away, not linger.
-  writeManagedJson(path, { values: {}, owns: ['model'] });
+  writeManagedJson(path, { values: {}, owns: ['model'], provenance });
 
   const result = JSON.parse(readFileSync(path, 'utf8'));
-  assert.ok(!('model' in result), 'a managed key with no value must be deleted');
+  assert.ok(!('model' in result), 'a key this runtime wrote and no longer supplies must be deleted');
   assert.equal(result.theme, 'dark', 'unmanaged keys are untouched');
 });
 
@@ -41,11 +47,12 @@ test('emptied containers are pruned rather than left as husks', () => {
   const path = join(dir, 'nested.json');
   writeFileSync(path, JSON.stringify({ gateway: { controlUi: { allow: true }, other: 1 } }));
 
-  writeManagedJson(path, { values: {}, owns: ['gateway.controlUi.allow'] });
+  // Explicit nulls: the emitter saying "remove these", which needs no provenance.
+  writeManagedJson(path, { values: { 'gateway.controlUi.allow': null }, owns: ['gateway.controlUi.allow'] });
   let result = JSON.parse(readFileSync(path, 'utf8'));
   assert.deepEqual(result, { gateway: { other: 1 } }, 'the empty controlUi mapping is pruned, gateway kept');
 
-  writeManagedJson(path, { values: {}, owns: ['gateway.other'] });
+  writeManagedJson(path, { values: { 'gateway.other': null }, owns: ['gateway.other'] });
   result = JSON.parse(readFileSync(path, 'utf8'));
   assert.deepEqual(result, {}, 'pruning cascades once nothing managed remains');
 });
@@ -76,16 +83,33 @@ test('re-seeding is idempotent byte-for-byte', () => {
   assert.equal(second.changed, false, 'an unchanged write reports no change');
 });
 
-test('a corrupt existing file is reported and rebuilt, not fatal', () => {
+test('a corrupt existing file is quarantined, not discarded', () => {
   const dir = scratch();
   const path = join(dir, 'corrupt.json');
-  writeFileSync(path, '{ this is not json');
+  // Stands in for a torn read of a file the harness rewrites out of band.
+  writeFileSync(path, '{"credentials":"precious", "oops');
   const warnings = [];
 
   writeManagedJson(path, { values: { model: 'm' }, owns: ['model'], onWarn: (w) => warnings.push(w) });
 
-  assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { model: 'm' });
-  assert.equal(warnings[0].code, 'CONFIG_FILE_UNPARSEABLE');
+  assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { model: 'm' }, 'the agent still gets a usable config');
+  assert.equal(warnings[0].code, 'CONFIG_FILE_QUARANTINED');
+
+  const saved = readdirSync(dir).filter((f) => f.startsWith('corrupt.json.corrupt-'));
+  assert.equal(saved.length, 1, `expected the original to be set aside, found ${readdirSync(dir).join(', ')}`);
+  assert.match(readFileSync(join(dir, saved[0]), 'utf8'), /precious/, 'the user bytes must survive verbatim');
+});
+
+test('a file that parses to a non-mapping is quarantined too', () => {
+  const dir = scratch();
+  const path = join(dir, 'list.json');
+  writeFileSync(path, '["user","data"]');
+  const warnings = [];
+
+  writeManagedJson(path, { values: { model: 'm' }, owns: ['model'], onWarn: (w) => warnings.push(w) });
+
+  assert.equal(warnings[0].code, 'CONFIG_FILE_QUARANTINED');
+  assert.equal(readdirSync(dir).filter((f) => f.startsWith('list.json.corrupt-')).length, 1);
 });
 
 test('writes leave no temp files behind', () => {
@@ -96,9 +120,8 @@ test('writes leave no temp files behind', () => {
   assert.deepEqual(readdirSync(dir).sort(), ['AGENTS.md', 'a.json']);
 });
 
-test('readJsonOr tolerates absent and non-mapping files', () => {
+test('readJsonOr tolerates an absent file without quarantining anything', () => {
   const dir = scratch();
   assert.deepEqual(readJsonOr(join(dir, 'missing.json')), {});
-  writeFileSync(join(dir, 'list.json'), '[1,2]');
-  assert.deepEqual(readJsonOr(join(dir, 'list.json')), {});
+  assert.deepEqual(readdirSync(dir), [], 'nothing to preserve, nothing created');
 });

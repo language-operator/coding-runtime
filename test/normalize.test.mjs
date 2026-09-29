@@ -183,3 +183,26 @@ test('malformed headers warn and are ignored rather than crashing the seed', () 
   const shapes = doc.meta.warnings.filter((w) => w.code === 'UNEXPECTED_SHAPE').map((w) => w.path).sort();
   assert.deepEqual(shapes, ['tools.list-headers.headers', 'tools.nested-value.headers.Bad']);
 });
+
+test('the gateway key is exposed as a reference, never as a value', () => {
+  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
+  const SECRET = 'sk-langop-agent7.deadbeefcafe';
+
+  const without = normalize({ yamlText, env: {}, ...FIXED_INPUTS });
+  assert.equal(without.gateway.apiKey, 'sk-langop-proxy');
+  assert.equal(without.gateway.apiKeyRef, null, 'no key issued means nothing to reference');
+
+  const withKey = normalize({ yamlText, env: { MODEL_API_KEY: SECRET }, ...FIXED_INPUTS });
+  assert.equal(withKey.gateway.apiKey, 'sk-langop-proxy', 'apiKey stays the placeholder so an older emitter is unaffected');
+  assert.equal(withKey.gateway.apiKeyRef, '$(MODEL_API_KEY)');
+
+  // cmdSeed serializes exactly this document to the workspace volume.
+  assert.ok(!JSON.stringify(withKey).includes(SECRET), 'the normalized document must never carry the credential');
+});
+
+test('an empty or blank MODEL_API_KEY counts as no key at all', () => {
+  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
+  for (const MODEL_API_KEY of ['', '   ']) {
+    assert.equal(normalize({ yamlText, env: { MODEL_API_KEY }, ...FIXED_INPUTS }).gateway.apiKeyRef, null);
+  }
+});

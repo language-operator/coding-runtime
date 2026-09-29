@@ -54,7 +54,9 @@
         "projects",
         "/workspace",
         "hasCompletedProjectOnboarding"
-      ]
+      ],
+      "hasCompletedOnboarding",
+      "oauthAccount"
     ]
   }
 ]

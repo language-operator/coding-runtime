@@ -42,7 +42,8 @@ warning is how two shipping adapters' phantom fields were found.
     "baseUrl":          "http://gateway.<ns>.svc.cluster.local:8000",
     "openaiBaseUrl":    "…:8000/v1",   // OpenAI clients append /chat/completions
     "anthropicBaseUrl": "…:8000",      // Anthropic clients append /v1/messages
-    "apiKey": "sk-langop-proxy",
+    "apiKey": "sk-langop-proxy",        // always the placeholder, never a credential
+    "apiKeyRef": "$(MODEL_API_KEY)",    // or null when no per-agent key is issued
     "source": "config" | "env"
   },
 
@@ -104,6 +105,14 @@ sent literally. Resolving at seed time writes the secret into the harness
 config on the workspace PVC, so an emitter should prefer `rewrite` whenever the
 client has a syntax. `MCP_SERVERS` never lists a server that needs headers, so
 the config file is the only source for them.
+
+**The gateway key is a reference, not a value.** `apiKey` is always the shared
+placeholder. When the deployment supplies `MODEL_API_KEY` — through
+`spec.credentials` or `spec.deployment.env`; the operator does not inject it —
+`apiKeyRef` carries `$(MODEL_API_KEY)` and the emitter decides how to render it.
+Resolving it here would put the credential in this document, which is written to
+`${STATE_DIR}/config.json`, *and* in whatever the emitter writes beside it. Same
+reasoning as tool headers.
 
 **Caches point at the PVC.** `/tmp` is a memory-backed emptyDir with no
 `sizeLimit`, so filling it OOM-kills the pod rather than returning `ENOSPC`.

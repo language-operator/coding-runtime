@@ -11,12 +11,26 @@
  * A descriptor is one of:
  *   { path, values, owns }  — merge managed keys into a JSON file
  *   { path, contents }      — write a file the runtime owns outright
+ *
+ * Within a merged file, `owns` is a static list of every key the runtime
+ * manages, and `values` says what it wants each to be *this run*:
+ *
+ *   supplied a value  — set it
+ *   supplied null     — remove it, whoever last wrote it
+ *   not supplied      — no opinion; removed only if the value on disk is still
+ *                       the one this runtime wrote (see config/provenance.mjs)
+ *
+ * The third case is the one to get right. A key the runtime owns in full should
+ * be supplied every run, null included, so "nothing here now" is stated rather
+ * than implied. A key it only sometimes has an opinion about — an onboarding
+ * marker written only in token mode, a model only when the operator configures
+ * one — should be omitted, and provenance will protect whatever the user has.
  */
 
 import { pathToFileURL } from 'node:url';
 
 import { writeManagedJson, writeOwnedFile, ensureDir } from './config/writers.mjs';
-import { renderHeaders } from './config/headers.mjs';
+import { renderHeaders, renderRef } from './config/headers.mjs';
 
 /**
  * The `ctx` an emitter receives: the environment as data, plus `renderHeaders`
@@ -28,6 +42,7 @@ export function emitterContext({ env = {}, onWarn = () => {} } = {}) {
   return {
     env,
     renderHeaders: (headers, opts = {}) => renderHeaders(headers, { env, onWarn, ...opts }),
+    renderRef: (value, opts = {}) => renderRef(value, { env, onWarn, ...opts }),
   };
 }
 
@@ -43,8 +58,15 @@ export async function loadEmitter(emitter) {
   return fn;
 }
 
-/** Apply the descriptors an emitter returned. */
-export function applyWrites(descriptors, { onWarn = () => {} } = {}) {
+/**
+ * Apply the descriptors an emitter returned.
+ *
+ * `provenance` is threaded down to every managed-JSON write, because deciding
+ * whether an owned key may be deleted needs to know what this runtime last
+ * wrote there. Omitted, writes still happen and nothing is ever deleted for
+ * want of a value.
+ */
+export function applyWrites(descriptors, { onWarn = () => {}, provenance = null } = {}) {
   const results = [];
   for (const d of descriptors ?? []) {
     if (!d || typeof d.path !== 'string') {
@@ -59,7 +81,7 @@ export function applyWrites(descriptors, { onWarn = () => {} } = {}) {
       results.push({ ...writeOwnedFile(d.path, d.contents), kind: 'file' });
       continue;
     }
-    results.push({ ...writeManagedJson(d.path, { values: d.values, owns: d.owns, onWarn }), kind: 'json' });
+    results.push({ ...writeManagedJson(d.path, { values: d.values, owns: d.owns, onWarn, provenance }), kind: 'json' });
   }
   return results;
 }

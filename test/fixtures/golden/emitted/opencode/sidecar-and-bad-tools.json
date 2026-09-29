@@ -24,7 +24,8 @@
           "type": "remote",
           "url": "http://remote.tools.svc.cluster.local:8080/mcp"
         }
-      }
+      },
+      "instructions": null
     },
     "owns": [
       "autoupdate",

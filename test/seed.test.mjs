@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -245,4 +245,61 @@ test('an invalid manifest names every problem at once', async () => {
   const output = log.lines.join('\n');
   assert.match(output, /unsupported schemaVersion 99/);
   assert.match(output, /name is required/);
+});
+
+/** Every file under a directory, recursively. */
+function walk(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...walk(full));
+    else out.push(full);
+  }
+  return out;
+}
+
+test('a per-agent gateway key reaches no file on the workspace volume', async () => {
+  // The broad assertion on purpose: this covers config.json, owned.json,
+  // opencode.jsonc and anything a later change adds, rather than the three
+  // sinks known today.
+  const SECRET = 'sk-langop-agent7.deadbeefcafe';
+  const { workspace, env } = stage({
+    adapter: 'opencode',
+    configYaml: `
+agent: {name: keytest, namespace: default}
+models:
+  m: {role: primary, model: claude-sonnet-4-5, endpoint: 'http://gateway.default.svc.cluster.local:8000'}
+`,
+  });
+
+  assert.equal(await main(['seed'], { env: { ...env, MODEL_API_KEY: SECRET }, log: recorder() }), 0);
+
+  const offenders = walk(workspace).filter((f) => readFileSync(f, 'utf8').includes(SECRET));
+  assert.deepEqual(offenders, [], `the credential was written to ${offenders.join(', ')}`);
+
+  // ...and the reference did land, so this is not passing by writing nothing.
+  const cfg = JSON.parse(readFileSync(join(workspace, '.coding-runtime', 'opencode', 'opencode.jsonc'), 'utf8'));
+  assert.equal(cfg.provider.openai.options.apiKey, '{env:MODEL_API_KEY}');
+});
+
+test('a server the operator withdrew before the upgrade is still cleared', async () => {
+  // The upgrade boundary: a key already on disk, already withdrawn, at the
+  // moment provenance is introduced. There is no record of writing it and none
+  // can ever be made — so if the emitter merely omitted the key rather than
+  // supplying it empty, the dead server would linger forever.
+  const { workspace, env } = stage({
+    configYaml: 'agent: {name: a, namespace: default}\n',
+  });
+  const claudeDir = join(workspace, '.claude');
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(join(claudeDir, '.claude.json'), JSON.stringify({
+    mcpServers: { gone: { type: 'http', url: 'http://removed.example/mcp' } },
+    oauthAccount: { emailAddress: 'real@example.com' },
+  }));
+
+  await main(['seed'], { env, log: recorder() });
+
+  const after = JSON.parse(readFileSync(join(claudeDir, '.claude.json'), 'utf8'));
+  assert.ok(!('mcpServers' in after), 'a withdrawn server must go even with no provenance record');
+  assert.deepEqual(after.oauthAccount, { emailAddress: 'real@example.com' }, 'and user state must survive the same seed');
 });

@@ -7,13 +7,13 @@
  * writes, a model chosen with `/model`, per-project history — that a re-seed
  * on every pod restart must not discard.
  *
- * Merging alone does not achieve that, which is the trap this emitter fell into
- * once already: `owns` means "reconcile this key every boot", and a key listed
- * there but absent from `values` is *deleted*. So a key may be owned only when
- * its absence genuinely means "remove it" — dropping the last tool has to
- * remove the MCP server entry — and a key the runtime supplies only sometimes
- * must be owned only when it is actually supplied. Claiming one unconditionally
- * deletes whatever the user established, on every single restart.
+ * Merging alone did not achieve that, which is the trap this emitter fell into
+ * once: `owns` used to mean "delete this key whenever it is not supplied", so
+ * declaring a key the emitter only sometimes writes deleted whatever the user
+ * had established, on every restart. The base now gates deletion on
+ * provenance — a key goes only when the value on disk is still the one the
+ * runtime wrote — so `owns` can once again be the flat, honest list of keys
+ * this emitter manages, whether or not it supplies each one on a given run.
  *
  * Note what is deliberately *not* set: ANTHROPIC_BASE_URL and
  * ANTHROPIC_AUTH_TOKEN. Claude Code authenticates against api.anthropic.com
@@ -23,19 +23,19 @@
  * product, not an oversight; see the runtime's README.
  */
 
-// Keys reconciled on every seed, because for these an absence really does mean
-// "remove it": the operator dropping its last tool must take the MCP server
-// entry with it. The trust markers are always supplied, so owning them costs
-// nothing and keeps them honest if that ever changes.
-//
-// hasCompletedOnboarding and oauthAccount are deliberately NOT here. They are
-// supplied only in CLAUDE_CODE_OAUTH_TOKEN mode, and are owned only in that
-// same branch — see emit(). Under an interactive `/login` the runtime has no
-// opinion about them, and having no opinion has to mean leaving them alone.
+// Every key this emitter manages in .claude.json, supplied on a given run or
+// not. The onboarding pair is written only in CLAUDE_CODE_OAUTH_TOKEN mode;
+// listing it here is now safe, because under an interactive `/login` the
+// runtime never wrote those keys and provenance will not delete what it did
+// not write. Declaring them keeps the clean-up honest in the other direction:
+// switch an agent from token mode back to interactive and the stub this
+// emitter did write is removed.
 const CLAUDE_JSON_OWNS = [
   'mcpServers',
   ['projects', '/workspace', 'hasTrustDialogAccepted'],
   ['projects', '/workspace', 'hasCompletedProjectOnboarding'],
+  'hasCompletedOnboarding',
+  'oauthAccount',
 ];
 
 // Variables Claude Code reads as empty inside a remote MCP server's `headers`,
@@ -82,28 +82,26 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   const settings = {
     preferredNotifChannel: 'terminal_bell',
   };
-  // Owned only when the operator selects a model. With none configured the
-  // runtime has no opinion, and `model` is then whatever the user picked with
-  // `/model` — owning it unconditionally would delete that choice on the next
-  // restart. The cost is that a model the operator stops configuring lingers
-  // rather than being cleared, which `/model` can undo; the reverse mistake
-  // silently discards a user's setting and looks like a bug in Claude Code.
-  const settingsOwns = ['preferredNotifChannel'];
-  if (config.models.primary) {
-    settings.model = config.models.primary.id;
-    settingsOwns.push('model');
-  }
+  // `model` is managed whether or not the operator configures one. A model the
+  // operator withdraws is cleared, because the runtime wrote that value; a
+  // model the user chose with `/model` is left alone, because it is no longer
+  // the value the runtime wrote. Both follow from provenance without this
+  // emitter having to decide which case it is in.
+  const settingsOwns = ['preferredNotifChannel', 'model'];
+  if (config.models.primary) settings.model = config.models.primary.id;
 
   // --- .claude.json: MCP servers, trust, onboarding
   // Entry form rather than an object, because the `projects` map is keyed by
   // absolute path and those keys cannot be spelled as dotted strings.
   const values = [];
-  const owns = [...CLAUDE_JSON_OWNS];
 
+  // Always supplied, including when there are no tools. This map is the
+  // runtime's in full, so "the operator has no tools" is a statement it must
+  // make rather than a silence: an omitted key with no provenance record is
+  // never deleted, and a key that is never supplied never gains a record — so
+  // omitting it would strand a withdrawn server in the file permanently.
   const mcpServers = config.tools.map((tool) => [tool.name, mcpServer(tool)]).filter(([, server]) => server);
-  if (mcpServers.length > 0) {
-    values.push(['mcpServers', Object.fromEntries(mcpServers)]);
-  }
+  values.push(['mcpServers', mcpServers.length > 0 ? Object.fromEntries(mcpServers) : null]);
 
   // Pre-trust the workspace so Claude Code does not prompt on first run. The
   // trust check walks up the tree, so trusting /workspace covers the cloned
@@ -119,7 +117,6 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
   // display only; the token is the actual credential.
   if (env.CLAUDE_CODE_OAUTH_TOKEN) {
     const name = config.agent.name ?? 'agent';
-    owns.push('hasCompletedOnboarding', 'oauthAccount');
     values.push(['hasCompletedOnboarding', true]);
     values.push(['oauthAccount', {
       accountUuid: '00000000-0000-0000-0000-000000000000',
@@ -134,7 +131,7 @@ export function emit(config, { env = {}, renderHeaders = null } = {}) {
 
   return [
     { path: `${configDir}/settings.json`, values: settings, owns: settingsOwns },
-    { path: `${configDir}/.claude.json`, values, owns },
+    { path: `${configDir}/.claude.json`, values, owns: CLAUDE_JSON_OWNS },
   ];
 }
 

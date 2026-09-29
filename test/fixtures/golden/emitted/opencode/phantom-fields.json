@@ -7,6 +7,8 @@
     "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
     "values": {
       "autoupdate": false,
+      "provider": null,
+      "model": null,
       "mcp": {
         "my-tool": {
           "type": "remote",

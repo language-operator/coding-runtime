@@ -11,7 +11,7 @@
 
 import { parseAgentConfig, splitList } from './load.mjs';
 import { validateAgentConfig } from './validate.mjs';
-import { GATEWAY_PLACEHOLDER_KEY } from './schema.mjs';
+import { GATEWAY_PLACEHOLDER_KEY, GATEWAY_API_KEY_VAR } from './schema.mjs';
 
 export const NORMALIZED_SCHEMA_VERSION = 1;
 
@@ -136,7 +136,15 @@ function deriveGateway(ordered, env) {
     openaiBaseUrl: `${baseUrl}/v1`,
     // Anthropic-shaped clients append /v1/messages to this.
     anthropicBaseUrl: baseUrl,
+    // Never a credential, whatever the deployment supplies. An emitter that
+    // knows nothing about apiKeyRef keeps working exactly as it did.
     apiKey: GATEWAY_PLACEHOLDER_KEY,
+    // The per-agent key as a reference in the operator's own `$(NAME)` syntax,
+    // or null when none is issued. Kept opaque for the same reason tools[]
+    // headers are: this document is written to ${STATE_DIR}/config.json, and an
+    // emitter writes what it renders into a harness config on the same volume.
+    // Resolving here would put the credential in both.
+    apiKeyRef: trimOrNull(env[GATEWAY_API_KEY_VAR]) ? `$(${GATEWAY_API_KEY_VAR})` : null,
     source: fromModels ? 'config' : 'env',
   };
 }

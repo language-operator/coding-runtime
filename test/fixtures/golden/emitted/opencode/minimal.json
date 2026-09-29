@@ -2,7 +2,11 @@
   {
     "path": "/workspace/.coding-runtime/opencode/opencode.jsonc",
     "values": {
-      "autoupdate": false
+      "autoupdate": false,
+      "provider": null,
+      "model": null,
+      "mcp": null,
+      "instructions": null
     },
     "owns": [
       "autoupdate",

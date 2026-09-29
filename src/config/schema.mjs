@@ -49,3 +49,13 @@ export const OPERATOR_ENV = [
 
 /** The placeholder every adapter sends to the LiteLLM gateway; real keys live in the gateway pod. */
 export const GATEWAY_PLACEHOLDER_KEY = 'sk-langop-proxy';
+
+/**
+ * Where a per-agent gateway key arrives when one is issued.
+ *
+ * Deliberately absent from OPERATOR_ENV above: the operator injects
+ * MODEL_ENDPOINT but not this, which reaches the container through
+ * spec.credentials or spec.deployment.env. Its presence therefore means
+ * somebody deliberately issued a credential.
+ */
+export const GATEWAY_API_KEY_VAR = 'MODEL_API_KEY';

@@ -16,7 +16,9 @@
           }
         }
       },
-      "model": "openai/claude-sonnet-4-5"
+      "model": "openai/claude-sonnet-4-5",
+      "mcp": null,
+      "instructions": null
     },
     "owns": [
       "autoupdate",
