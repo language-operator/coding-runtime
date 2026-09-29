@@ -11,8 +11,31 @@
  * qualified id an agent selects is always `openai/<model id>`.
  */
 
-export function emit(config) {
+/**
+ * opencode's remote MCP default is 5000 ms to fetch a server's tools, too short
+ * for an external server that may sit behind a control plane and wait on a
+ * reconcile; header-bearing (external) entries get this instead.
+ */
+const EXTERNAL_TIMEOUT_MS = 30000;
+
+export function emit(config, { renderHeaders = null } = {}) {
   const configDir = config.paths.stateDir ? `${config.paths.stateDir}/opencode` : '/etc/opencode';
+
+  // An external server's headers go in as `{env:NAME}`, opencode's own
+  // environment reference, so the token is never written into opencode.jsonc.
+  // A header whose variable is unset is dropped with a warning. Without the
+  // base runtime's helper (a pre-0.2 base) the headers are omitted.
+  const mcpServer = (tool) => {
+    const server = { type: 'remote', url: tool.endpoint };
+    const headers = renderHeaders && tool.headers
+      ? renderHeaders(tool.headers, { path: `tools.${tool.name}`, rewrite: (name) => `{env:${name}}` })
+      : null;
+    if (headers) {
+      server.headers = headers;
+      server.timeout = EXTERNAL_TIMEOUT_MS;
+    }
+    return server;
+  };
   const writes = [];
   const values = { autoupdate: false };
   const owns = ['autoupdate', 'provider', 'model', 'mcp', 'instructions'];
@@ -32,7 +55,7 @@ export function emit(config) {
 
   if (config.tools.length > 0) {
     values.mcp = Object.fromEntries(
-      config.tools.map((tool) => [tool.name, { type: 'remote', url: tool.endpoint }]),
+      config.tools.map((tool) => [tool.name, mcpServer(tool)]),
     );
   }
 

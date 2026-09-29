@@ -153,3 +153,33 @@ test('caches are directed at the PVC, never at the memory-backed /tmp', () => {
     );
   }
 });
+
+test('external tool headers pass through with $(NAME) references untouched', () => {
+  const { yamlText, env } = loadCase('external-headers');
+  const doc = normalize({ yamlText, env, ...FIXED_INPUTS });
+
+  const external = doc.tools.find((t) => t.name === 'control-plane');
+  assert.deepEqual(external.headers, {
+    Authorization: 'Bearer $(CONTROL_PLANE_TOKEN)',
+    'X-Agent': 'external',
+    'X-Optional': '$(MISSING_TOKEN)',
+  });
+  // Normalization never substitutes: the emitter decides the client's syntax,
+  // and the secret must not appear in the debug config.json snapshot.
+  assert.ok(!JSON.stringify(doc).includes(env.CONTROL_PLANE_TOKEN));
+  assert.equal(doc.tools.find((t) => t.name === 'in-cluster').headers, null, 'present-or-null, never absent');
+  assert.ok(!doc.meta.warnings.some((w) => w.code === 'UNKNOWN_KEY'), 'headers is a known key');
+});
+
+test('malformed headers warn and are ignored rather than crashing the seed', () => {
+  const yamlText = [
+    'tools:',
+    '  list-headers: {endpoint: https://a.example/mcp, headers: [1, 2]}',
+    '  nested-value: {endpoint: https://b.example/mcp, headers: {Ok: fine, Bad: {x: 1}}}',
+  ].join('\n');
+  const doc = normalize({ yamlText, env: {}, ...FIXED_INPUTS });
+  assert.equal(doc.tools.find((t) => t.name === 'list-headers').headers, null);
+  assert.deepEqual(doc.tools.find((t) => t.name === 'nested-value').headers, { Ok: 'fine' });
+  const shapes = doc.meta.warnings.filter((w) => w.code === 'UNEXPECTED_SHAPE').map((w) => w.path).sort();
+  assert.deepEqual(shapes, ['tools.list-headers.headers', 'tools.nested-value.headers.Bad']);
+});

@@ -22,8 +22,22 @@ const CLAUDE_JSON_OWNS = [
   'oauthAccount',
 ];
 
-export function emit(config, { env = {} } = {}) {
+export function emit(config, { env = {}, renderHeaders = null } = {}) {
   const configDir = env.CLAUDE_CONFIG_DIR ?? `${config.paths.workspace}/.claude`;
+
+  // An external server's headers go in as `${NAME}`, which Claude Code expands
+  // from the environment when it connects, so the token is never written into
+  // .claude.json. A header whose variable is unset is dropped with a warning.
+  // Without the base runtime's helper (a pre-0.2 base) the headers are omitted,
+  // which is the same refusal the server gave before headers existed.
+  const mcpServer = (tool) => {
+    const server = { type: 'http', url: tool.endpoint };
+    const headers = renderHeaders && tool.headers
+      ? renderHeaders(tool.headers, { path: `tools.${tool.name}`, rewrite: (name) => `\${${name}}` })
+      : null;
+    if (headers) server.headers = headers;
+    return server;
+  };
 
   // --- settings.json: model selection and the bell we rely on for the tab title
   const settings = {
@@ -38,7 +52,7 @@ export function emit(config, { env = {} } = {}) {
 
   if (config.tools.length > 0) {
     values.push(['mcpServers', Object.fromEntries(
-      config.tools.map((tool) => [tool.name, { type: 'http', url: tool.endpoint }]),
+      config.tools.map((tool) => [tool.name, mcpServer(tool)]),
     )]);
   }
 

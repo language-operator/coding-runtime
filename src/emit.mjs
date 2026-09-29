@@ -16,6 +16,20 @@
 import { pathToFileURL } from 'node:url';
 
 import { writeManagedJson, writeOwnedFile, ensureDir } from './config/writers.mjs';
+import { renderHeaders } from './config/headers.mjs';
+
+/**
+ * The `ctx` an emitter receives: the environment as data, plus `renderHeaders`
+ * bound to that environment and to the runtime's warning channel, so an emitter
+ * can translate a tool's `$(NAME)` header references without reading
+ * process.env or logging itself. Tests build the same object with a collector.
+ */
+export function emitterContext({ env = {}, onWarn = () => {} } = {}) {
+  return {
+    env,
+    renderHeaders: (headers, opts = {}) => renderHeaders(headers, { env, onWarn, ...opts }),
+  };
+}
 
 export async function loadEmitter(emitter) {
   if (!emitter || emitter.type === 'none') return null;

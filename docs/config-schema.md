@@ -16,7 +16,7 @@ complete set of keys; anything else in the file was hand-written or imagined.
 agent:        { name, namespace }
 instructions: <string>
 personas:     [ { name, tone, personality, expertise } ]
-tools:        { <name>: { endpoint, protocol } }
+tools:        { <name>: { endpoint, protocol, headers } }
 models:       { <key>: { role, provider, model, endpoint, priority } }
 ```
 
@@ -47,7 +47,7 @@ warning is how two shipping adapters' phantom fields were found.
   },
 
   "models": { "primary": {…} | null, "ordered": [ … ], "byKey": { … } },
-  "tools": [ { "name", "endpoint", "protocol", "transport", "local" } ],
+  "tools": [ { "name", "endpoint", "protocol", "transport", "local", "headers" } ],
   "paths": { "workspace", "repoDir", "workDir", "home", "stateDir", "tmpDir",
              "cacheHome", "dataHome", "configHome", "agentConfigPath" }
 }
@@ -88,6 +88,17 @@ instructions file, the other as a system-prompt append.
 operator bridges stdio tools to Streamable HTTP, so every tool looks the same
 from here. `local` is true for a sidecar-mode tool resolved to `localhost`.
 
-**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir with no
-`sizeLimit`, so filling it OOM-kills the pod rather than returning `ENOSPC`.
-Nothing cache-shaped may live there.
+**Headers are not substituted here.** An external server (`spec.tools[].url`)
+may carry `headers`, a string map, in which `$(NAME)` refers to an environment
+variable of the agent container. Normalization passes the references through
+untouched — the secret must not appear in the `config.json` debug snapshot —
+and the emitter renders them with `ctx.renderHeaders`, choosing the client's
+own reference syntax where it has one (Claude Code `${NAME}`, OpenCode
+`{env:NAME}`) or resolving from the environment at seed time where it does not.
+A header whose variable is unset is dropped with a `HEADER_DROPPED` warning,
+never sent as `$(NAME)` literally. `MCP_SERVERS` never lists a server that
+needs headers, so the config file is the only source for them.
+
+**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir capped at 1Gi
+that counts against the container's memory limit. Nothing cache-shaped may
+live there.

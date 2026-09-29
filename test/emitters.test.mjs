@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { normalize } from '../src/config/normalize.mjs';
+import { emitterContext } from '../src/emit.mjs';
 import { caseNames, loadCase, GOLDEN_DIR, FIXED_INPUTS } from './helpers/corpus.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,7 +26,7 @@ for (const adapter of ADAPTERS) {
       await t.test(name, () => {
         const { yamlText, env } = loadCase(name);
         const config = normalize({ yamlText, env, ...FIXED_INPUTS });
-        const writes = emit(config, { env });
+        const writes = emit(config, emitterContext({ env }));
         const actual = `${JSON.stringify(writes, null, 2)}\n`;
         const goldenPath = join(outDir, `${name}.json`);
 
@@ -135,3 +136,46 @@ test('every emitter declares ownership of everything it writes', async (t) => {
     });
   }
 });
+
+// The external-headers case sets CONTROL_PLANE_TOKEN and leaves MISSING_TOKEN
+// unset. Both emitters must write the client's own env reference, never the
+// token, and drop the unresolvable header with a warning.
+for (const [adapter, expectRef, extra] of [
+  ['claude-code', '${CONTROL_PLANE_TOKEN}', {}],
+  ['opencode', '{env:CONTROL_PLANE_TOKEN}', { timeout: 30000 }],
+]) {
+  test(`${adapter} sends external MCP headers as an environment reference`, async () => {
+    const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
+    const { yamlText, env } = loadCase('external-headers');
+    const warnings = [];
+    const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env, onWarn: (w) => warnings.push(w) }));
+
+    const serialized = JSON.stringify(writes);
+    assert.ok(!serialized.includes(env.CONTROL_PLANE_TOKEN), 'the token must never be written to disk');
+    assert.ok(!serialized.includes('$(CONTROL_PLANE_TOKEN)'), 'the operator syntax must be translated');
+
+    const servers = findMcpServers(adapter, writes);
+    assert.deepEqual(servers['control-plane'].headers, { Authorization: `Bearer ${expectRef}`, 'X-Agent': 'external' });
+    for (const [k, v] of Object.entries(extra)) assert.equal(servers['control-plane'][k], v);
+    assert.equal(servers['in-cluster'].headers, undefined, 'in-cluster tools carry no headers key');
+    assert.equal(servers['in-cluster'].timeout, undefined);
+    assert.deepEqual(warnings.map((w) => [w.code, w.path]), [['HEADER_DROPPED', 'tools.control-plane.X-Optional']]);
+  });
+
+  test(`${adapter} omits headers on a base runtime without renderHeaders`, async () => {
+    const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
+    const { yamlText, env } = loadCase('external-headers');
+    const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
+    const servers = findMcpServers(adapter, writes);
+    assert.equal(servers['control-plane'].headers, undefined);
+    assert.ok(!JSON.stringify(writes).includes('$('));
+  });
+}
+
+function findMcpServers(adapter, writes) {
+  if (adapter === 'claude-code') {
+    const claudeJson = writes.find((w) => w.path.endsWith('.claude.json'));
+    return claudeJson.values.find(([key]) => key === 'mcpServers')[1];
+  }
+  return writes.find((w) => w.path.endsWith('opencode.jsonc')).values.mcp;
+}
