@@ -84,6 +84,10 @@ first depends on the bump type:
 
 Otherwise confirm the ranges still admit the new version and leave them alone.
 
+While here, bump the `ARG BASE=…coding-runtime:X.Y.Z` example in `README.md` to the
+version being released. It is the line an adapter author copies, so a stale one sends
+them to a base that predates whatever they are reading about.
+
 **5. Bump the version**, unless step 3 determined the current version is already
 the one to release. `npm version <type> --no-git-tag-version` updates
 `package.json` and `package-lock.json` together. Do not let npm create the commit

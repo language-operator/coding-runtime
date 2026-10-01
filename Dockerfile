@@ -6,11 +6,15 @@
 # wraps:
 #
 #   thick  an interactive terminal coding agent. Node, the full unix toolchain,
-#          gh/glab, Go, Helm, tmux and the web terminal. Used by claude-code,
-#          opencode and openclaw.
+#          gh/glab, Go, Helm, tmux and the web terminal. Used by claude-code
+#          and opencode.
 #   thin   a headless HTTP agent whose own process is the agent. Python and uv,
-#          the same runtime posture, no Node and no serving surface. Used by
-#          deepagents.
+#          the same runtime posture, no Node and no serving surface. No adapter
+#          uses it yet; deepagents is the intended first, tracked in
+#          language-operator/deepagents-adapter#8.
+#
+# openclaw is on neither: it builds an init container that seeds config, and its
+# main container is the upstream openclaw image rather than one of these.
 #
 # They have different parents and therefore share no layers. That is deliberate
 # and costs nothing: no node runs both shapes expecting deduplication. What they
@@ -25,9 +29,10 @@ ARG HELM_VERSION=3.17.3
 # =============================================================================
 # deps — compile native modules once, here, so no adapter ever needs a compiler.
 #
-# node-pty ships no Linux prebuilds. Today claude-code-adapter and
-# opencode-adapter each carry a g++/make/python3 build stage purely to build it.
-# Compiling in the base deletes that from every adapter.
+# node-pty ships no Linux prebuilds, so before this image existed
+# claude-code-adapter and opencode-adapter each carried a g++/make/python3 build
+# stage purely to build it. Compiling here deleted that from both: each is now a
+# single `FROM` on this image.
 #
 # Multi-arch note: node-pty builds per-architecture. Under buildx each platform
 # gets its own builder, so node_modules must never be copied across architectures.
