@@ -47,7 +47,7 @@ not bytes.
 ## Building an adapter
 
 ```dockerfile
-ARG BASE=ghcr.io/language-operator/coding-runtime:0.1.3
+ARG BASE=ghcr.io/language-operator/coding-runtime:0.1.4
 FROM ${BASE}
 USER root
 RUN npm install -g --no-audit --no-fund @anthropic-ai/claude-code && npm cache clean --force

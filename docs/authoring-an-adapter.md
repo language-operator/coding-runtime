@@ -150,7 +150,7 @@ values.push([['projects', '/workspace', 'hasTrustDialogAccepted'], true]);
 ## 3. `Dockerfile`
 
 ```dockerfile
-ARG BASE=ghcr.io/language-operator/coding-runtime:0.1.0
+ARG BASE=ghcr.io/language-operator/coding-runtime:0.1.4
 FROM ${BASE}
 USER root
 RUN npm install -g --no-audit --no-fund <the harness>
