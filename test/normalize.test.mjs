@@ -149,7 +149,7 @@ test('caches are directed at the PVC, never at the memory-backed /tmp', () => {
   for (const key of ['tmpDir', 'cacheHome', 'dataHome', 'configHome', 'home', 'stateDir']) {
     assert.ok(
       paths[key].startsWith('/workspace/'),
-      `${key} is ${paths[key]}; /tmp is a memory emptyDir with no sizeLimit, so filling it OOM-kills the pod`,
+      `${key} is ${paths[key]}; /tmp is a memory emptyDir capped at 1Gi and charged against the pod's memory limit`,
     );
   }
 });

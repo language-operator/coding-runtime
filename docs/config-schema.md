@@ -114,6 +114,6 @@ Resolving it here would put the credential in this document, which is written to
 `${STATE_DIR}/config.json`, *and* in whatever the emitter writes beside it. Same
 reasoning as tool headers.
 
-**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir with no
-`sizeLimit`, so filling it OOM-kills the pod rather than returning `ENOSPC`.
-Nothing cache-shaped may live there.
+**Caches point at the PVC.** `/tmp` is a memory-backed emptyDir capped at 1Gi,
+which counts against the container's memory limit, so a large write fails with
+`ENOSPC`. Nothing cache-shaped may live there.
