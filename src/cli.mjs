@@ -54,11 +54,11 @@ const isWritable = (path) => {
  *
  * Every value here exists because the agent container runs with
  * `readOnlyRootFilesystem: true` as uid 1000, with only /tmp and the workspace
- * PVC writable — and /tmp is a memory-backed emptyDir with no size limit, so
- * anything cache-shaped that lands there is charged against the pod's memory
- * limit and overflows as an OOMKill rather than ENOSPC. Caches therefore go to
- * the PVC. Each adapter has patched around some part of this by hand, none the
- * same way; doing it once here is the point of the base image.
+ * PVC writable — and /tmp is memory-backed and capped at 1Gi, so anything
+ * cache-shaped that lands there is charged against the pod's memory limit and
+ * fails with ENOSPC once it fills. Caches therefore go to the PVC. Each adapter
+ * has patched around some part of this by hand, none the same way; doing it once
+ * here is the point of the base image.
  */
 export function resolveEnv(manifest, env) {
   const { paths } = manifest;
