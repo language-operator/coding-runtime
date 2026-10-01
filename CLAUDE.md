@@ -10,8 +10,11 @@ Two variants, published from one Dockerfile:
 
 - **thick** (`node:24-slim`) — full unix toolchain, `gh`/`glab`, Go, Helm, tmux, and the
   xterm.js/`node-pty` terminal. For interactive terminal coding agents.
-- **thin** (`python:3.13-slim`) — the same runtime posture and `uv`, no Node and no serving
+- **thin** (`python:3.13-slim`) — the same runtime posture, no Node and no serving
   surface. For headless HTTP agents whose own process is the agent.
+
+`python3` and `uv` are in both variants; the split is about the agent process's own
+language and whether it needs a terminal, not about Python's availability.
 
 ## Layout
 

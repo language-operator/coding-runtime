@@ -33,7 +33,11 @@ Each of those is fixed once here.
 | tag | shape | for |
 |---|---|---|
 | `ghcr.io/language-operator/coding-runtime:X.Y.Z` | **thick** — `node:24-slim`, full unix toolchain, `gh`/`glab`, Go, Helm, tmux, the web terminal | interactive terminal coding agents |
-| `…:X.Y.Z-python` | **thin** — `python:3.13-slim`, `uv`, the same runtime posture, no Node | headless HTTP agents whose own process is the agent |
+| `…:X.Y.Z-python` | **thin** — `python:3.13-slim`, the same runtime posture, no Node | headless HTTP agents whose own process is the agent |
+
+`python3` and `uv` are in **both**. Which variant you pick is about the language
+the agent process itself is written in and whether it needs a terminal — not
+about whether Python is available to the agent.
 
 They have different parents and share no layers. That is deliberate: no node
 runs both shapes expecting deduplication. What they share is the contract — the

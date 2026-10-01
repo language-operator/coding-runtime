@@ -191,6 +191,13 @@ check "/workspace is writable"           run 'touch /workspace/probe'
 check "locale is UTF-8"                  run '[ "$(locale charmap 2>/dev/null)" = "UTF-8" ]'
 check "tini is present to reap orphans"  run '[ -x /usr/bin/tini ]'
 check "git is installed"                 run 'git --version'
+# Both variants, not just thin: python3 and uv are part of what every adapter can
+# assume. uv is checked by running it, because it arrives as a copied binary and a
+# wrong-architecture copy is the failure that would otherwise surface as a crash
+# in someone's agent.
+check "python3 is present"               run 'python3 --version'
+check "uv is present"                    run 'uv --version'
+check "uvx is present"                   run 'uvx --version'
 # Run this in /tmp, where the process owns what it creates, so the assertion is
 # about the passwd entry rather than about bind-mount ownership.
 check "git does not warn about the current user" \
@@ -207,8 +214,6 @@ if has_cli; then
     check "node-pty loads"               run 'node -e "require(\"/opt/coding-runtime/node_modules/node-pty\")"'
 else
     echo "== runtime (thin: no Node, contract only) =="
-    check "python is present"            run 'python3 --version'
-    check "uv is present"                run 'uv --version'
     check "gh is present"                run 'gh --version'
     check "glab is present"              run 'glab --version'
     check "a version is recorded"        run '[ -s /opt/coding-runtime/VERSION ]'
