@@ -3,6 +3,12 @@
 #
 #     test/conformance.sh <image> [base|adapter]
 #
+# CONFORMANCE_SKIP declares checks an image cannot pass, one exact description
+# per line. A declared check still runs: it is reported as `skip` when it fails,
+# but as a failure when it passes, so a skip cannot outlive the limitation that
+# justified it. Adapters needed a wrapper script to get this, which meant every
+# repo reimplemented the accounting and could drift from the suite's own names.
+#
 # The container flags are not incidental — they reproduce the posture the
 # operator imposes and that an adapter cannot override: uid 1000, a read-only
 # root filesystem, all capabilities dropped, and /tmp as a small tmpfs. Every
@@ -22,6 +28,7 @@ WORKDIR="$(mktemp -d)"
 CONTAINER="conformance-$$"
 PASS=0
 FAIL=0
+SKIP=0
 
 cleanup() {
     local status=$?
@@ -38,23 +45,47 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Exact-match, so a declared skip names one check and cannot widen silently into
+# a prefix that swallows checks added later.
+declared_skip() {
+    [ -n "${CONFORMANCE_SKIP:-}" ] || return 1
+    printf '%s\n' "$CONFORMANCE_SKIP" | grep -qxF "$1"
+}
+
 check() {
     local desc="$1"; shift
     local out
     # Captured rather than discarded: a failing check in CI is useless without
     # the reason, and the container is gone by the time anyone looks.
     if out="$("$@" 2>&1)"; then
+        if declared_skip "$desc"; then
+            # Declared inapplicable, yet it passes. Reported as a failure on
+            # purpose: the alternative is a skip nobody ever removes, which is
+            # how a tolerance ends up citing a limitation that no longer exists.
+            echo "  FAIL  $desc"
+            echo "          | this check passes — remove it from CONFORMANCE_SKIP"
+            FAIL=$((FAIL + 1))
+            return
+        fi
         echo "  ok    $desc"
         PASS=$((PASS + 1))
-    else
-        echo "  FAIL  $desc"
-        if [ -n "$out" ]; then
-            printf '%s\n' "$out" | sed 's/^/          | /' | tail -12
-        else
-            echo "          | (no output)"
-        fi
-        FAIL=$((FAIL + 1))
+        return
     fi
+    if declared_skip "$desc"; then
+        echo "  skip  $desc"
+        if [ -n "$out" ]; then
+            printf '%s\n' "$out" | sed 's/^/          | /' | tail -4
+        fi
+        SKIP=$((SKIP + 1))
+        return
+    fi
+    echo "  FAIL  $desc"
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out" | sed 's/^/          | /' | tail -12
+    else
+        echo "          | (no output)"
+    fi
+    FAIL=$((FAIL + 1))
 }
 
 # Same constraints as the agent container. --user 1000:1000 rather than
@@ -305,5 +336,9 @@ if [ "$SURFACE" = terminal ]; then
 fi
 
 echo
-echo "$PASS passed, $FAIL failed"
+if [ "$SKIP" -gt 0 ]; then
+    echo "$PASS passed, $FAIL failed, $SKIP skipped by CONFORMANCE_SKIP"
+else
+    echo "$PASS passed, $FAIL failed"
+fi
 [ "$FAIL" -eq 0 ]
