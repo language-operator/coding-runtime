@@ -54,9 +54,8 @@ trap cleanup EXIT
 # a prefix that swallows checks added later.
 declared_skip() {
     [ -n "${CONFORMANCE_SKIP:-}" ] || return 1
-    # A here-string rather than `printf | grep`: grep -q exits on the first
-    # match, so a long CONFORMANCE_SKIP kills printf with SIGPIPE and pipefail
-    # turns the status into 141 — read as "not declared", silently.
+    # A here-string rather than `printf | grep`: one process instead of two, and
+    # no pipeline whose writer's status can mask the match under pipefail.
     grep -qxF "$1" <<<"$CONFORMANCE_SKIP"
 }
 
