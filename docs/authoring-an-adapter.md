@@ -207,3 +207,28 @@ typed text *did*, because the two are not the same question: a shell executes a
 line, a TUI puts it in a prompt box, and the base exists to serve both. Nothing
 is submitted — no Enter is sent — since a submitted line means something
 different, and potentially something destructive, in every terminal program.
+
+### A check your harness cannot pass
+
+Some checks assume things a particular harness does not do. `a keystroke reaches
+the program under tmux` types text and greps `tmux capture-pane` for it, which
+holds for a shell at a command line and for a TUI at its prompt box — but not for
+a TUI that has not *reached* its prompt box. A harness that opens on an
+onboarding screen or a menu renders none of the typed characters, because the
+conformance container has no credentials.
+
+Declare such a check by its exact description, one per line:
+
+```bash
+CONFORMANCE_SKIP="a keystroke reaches the program under tmux" \
+  ./conformance.sh my-adapter:test adapter
+```
+
+A declared check still runs. It is reported as `skip` when it fails, and as a
+**failure** when it passes — so a skip cannot outlive the limitation that
+justified it, which is the failure mode of a hand-written tolerance that ends up
+citing an issue closed months ago. Matching is exact, so a declaration names one
+check and cannot widen into a prefix that swallows checks added later.
+
+Declare as little as possible. A check that fails because the image is wrong is
+the suite working.
