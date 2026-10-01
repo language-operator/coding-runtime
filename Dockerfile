@@ -8,10 +8,14 @@
 #   thick  an interactive terminal coding agent. Node, the full unix toolchain,
 #          gh/glab, Go, Helm, tmux and the web terminal. Used by claude-code
 #          and opencode.
-#   thin   a headless HTTP agent whose own process is the agent. Python and uv,
-#          the same runtime posture, no Node and no serving surface. No adapter
-#          uses it yet; deepagents is the intended first, tracked in
+#   thin   a headless HTTP agent whose own process is the agent. The same runtime
+#          posture, no Node and no serving surface. No adapter uses it yet;
+#          deepagents is the intended first, tracked in
 #          language-operator/deepagents-adapter#8.
+#
+# python3 and uv are in both. The difference is which language the agent process
+# itself is written in, not whether Python is available to it: a coding agent on
+# thick runs repo scripts and ad-hoc tooling that assume an interpreter.
 #
 # openclaw is on neither: it builds an init container that seeds config, and its
 # main container is the upstream openclaw image rather than one of these.
@@ -25,6 +29,11 @@ ARG GH_VERSION=2.65.0
 ARG GLAB_VERSION=1.117.0
 ARG GO_VERSION=1.26.4
 ARG HELM_VERSION=3.17.3
+ARG UV_VERSION=0.11.16
+
+# uv goes into both variants, so it is a stage rather than two pinned COPYs that
+# could drift apart.
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # =============================================================================
 # deps — compile native modules once, here, so no adapter ever needs a compiler.
@@ -109,6 +118,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         make \
         openssh-client \
         procps \
+        python3 \
         ripgrep \
         shellcheck \
         tini \
@@ -118,6 +128,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         vim \
         wget \
     && rm -rf /var/lib/apt/lists/*
+
+# uv on thick too, not just thin. A coding agent reaches for Python whatever the
+# harness is written in — a repo's own scripts, a quick calculation, an `uv run`
+# of some tool — and Debian's python3 alone cannot install anything into a
+# read-only rootfs. uv can: it resolves into a venv or its own cache, both of
+# which `coding-runtime env` points at the workspace volume (UV_CACHE_DIR).
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 COPY --from=tools /out/usr/local/ /usr/local/
 ENV PATH=/usr/local/go/bin:$PATH
@@ -185,7 +202,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /usr/local/bin/
+COPY --from=uv /uv /uvx /usr/local/bin/
 # gh and glab, but not Go: an agent on thin still opens PRs and MRs, and the
 # tokens it is given are only useful with these. Go stays a thick-only toolchain.
 COPY --from=tools /out/usr/local/bin/gh /out/usr/local/bin/glab /usr/local/bin/
