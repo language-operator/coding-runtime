@@ -29,6 +29,11 @@ CONTAINER="conformance-$$"
 PASS=0
 FAIL=0
 SKIP=0
+# Descriptions from CONFORMANCE_SKIP that a check actually presented this run.
+# Without this, a declaration that no longer matches anything is a silent no-op:
+# the suite already renamed this very check once, and adapters re-extract the
+# script from each new base, so a stale declaration is the expected failure.
+SKIP_SEEN=""
 
 cleanup() {
     local status=$?
@@ -49,12 +54,36 @@ trap cleanup EXIT
 # a prefix that swallows checks added later.
 declared_skip() {
     [ -n "${CONFORMANCE_SKIP:-}" ] || return 1
-    printf '%s\n' "$CONFORMANCE_SKIP" | grep -qxF "$1"
+    # A here-string rather than `printf | grep`: grep -q exits on the first
+    # match, so a long CONFORMANCE_SKIP kills printf with SIGPIPE and pipefail
+    # turns the status into 141 — read as "not declared", silently.
+    grep -qxF "$1" <<<"$CONFORMANCE_SKIP"
+}
+
+# Fails for any declaration that matched no check this run — the other half of
+# "a skip cannot outlive its justification". Named for both modes, since a
+# mode-specific check does not run in the other one.
+audit_declared_skips() {
+    [ -n "${CONFORMANCE_SKIP:-}" ] || return 0
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        if ! grep -qxF "$line" <<<"$SKIP_SEEN"; then
+            echo "  FAIL  CONFORMANCE_SKIP declares a check that did not run"
+            echo "          | $line"
+            echo "          | renamed, removed, or not part of this mode"
+            FAIL=$((FAIL + 1))
+        fi
+    done <<<"$CONFORMANCE_SKIP"
 }
 
 check() {
     local desc="$1"; shift
     local out
+    if declared_skip "$desc"; then
+        SKIP_SEEN="${SKIP_SEEN}${desc}
+"
+    fi
     # Captured rather than discarded: a failing check in CI is useless without
     # the reason, and the container is gone by the time anyone looks.
     if out="$("$@" 2>&1)"; then
@@ -74,7 +103,9 @@ check() {
     if declared_skip "$desc"; then
         echo "  skip  $desc"
         if [ -n "$out" ]; then
-            printf '%s\n' "$out" | sed 's/^/          | /' | tail -4
+            # head, not tail: the first lines carry the reason, and for the
+            # terminal check the tail is unlabelled pane content.
+            printf '%s\n' "$out" | sed 's/^/          | /' | head -4
         fi
         SKIP=$((SKIP + 1))
         return
@@ -209,7 +240,12 @@ if [ "$MODE" = base ]; then
         check "the entrypoint fails loudly without a manifest" entry_explains
     fi
     echo
-    echo "base image: $PASS passed, $FAIL failed"
+    audit_declared_skips
+    if [ "$SKIP" -gt 0 ]; then
+        echo "base image: $PASS passed, $FAIL failed, $SKIP skipped by CONFORMANCE_SKIP"
+    else
+        echo "base image: $PASS passed, $FAIL failed"
+    fi
     [ "$FAIL" -eq 0 ]
     exit
 fi
@@ -336,6 +372,7 @@ if [ "$SURFACE" = terminal ]; then
 fi
 
 echo
+audit_declared_skips
 if [ "$SKIP" -gt 0 ]; then
     echo "$PASS passed, $FAIL failed, $SKIP skipped by CONFORMANCE_SKIP"
 else
