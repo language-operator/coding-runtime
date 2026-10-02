@@ -1,6 +1,6 @@
 name: Adapter Example Drift
 
-# `examples/claude-code/` and `examples/opencode/` are the adapters' real
+# `examples/claude-code/`, `examples/opencode/` and `examples/pi/` are the adapters' real
 # runtime.json and emit.mjs, not illustrations. They are the authoring reference
 # the docs point at, the source the CI fixture adapter is built from, and what
 # the emitted goldens are generated against — so a copy that quietly falls
@@ -53,4 +53,5 @@ jobs:
 
           check claude-code claude-code-adapter
           check opencode    opencode-adapter
+          check pi          pi-adapter
           exit "$status"

@@ -7,6 +7,7 @@ These are not illustrations. Each directory holds the **real** `runtime.json` an
 |---|---|
 | `claude-code/` | [`claude-code-adapter`](https://github.com/language-operator/claude-code-adapter) |
 | `opencode/` | [`opencode-adapter`](https://github.com/language-operator/opencode-adapter) |
+| `pi/` | [`pi-adapter`](https://github.com/language-operator/pi-adapter) |
 
 They are kept byte-identical to each adapter's `main`, and
 `.github/workflows/example-drift.yaml` fails when they are not.
@@ -18,9 +19,9 @@ rather than only in the adapters:
   writing an adapter — real working files rather than a sketch.
 - `test/fixture-adapter/` builds an image from `claude-code/`, so adapter-mode
   conformance exercises the documented path rather than a contrived fixture.
-- `test/fixtures/golden/emitted/` is generated from both, so a change to the
+- `test/fixtures/golden/emitted/` is generated from all of them, so a change to the
   normalizer shows up as a diff in what each harness would actually be configured
   with.
 
-Changing an emitter therefore means changing it in both places. The drift check is
+Changing an emitter therefore means changing it in two places, here and in its adapter. The drift check is
 what stops one of them being forgotten.

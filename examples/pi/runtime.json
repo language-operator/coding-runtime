@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "pi",
+  "displayName": "pi",
+  "role": "main",
+  "requires": { "codingRuntime": ">=0.1.2 <1.0.0" },
+  "env": { "PI_CODING_AGENT_DIR": "${STATE_DIR}/pi", "PI_OFFLINE": "1" },
+  "preflight": [{ "path": "${STATE_DIR}/pi", "mode": "700" }],
+  "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
+  "serve": { "surface": "terminal", "port": 8080, "originGuard": true },
+  "terminal": {
+    "tmuxSession": "pi",
+    "launch": ["launch-pi"],
+    "cwd": "${WORKDIR}",
+    "wsPath": "/ws",
+    "keepaliveSeconds": 25
+  }
+}

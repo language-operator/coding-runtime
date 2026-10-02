@@ -1,0 +1,37 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/pi/models.json",
+    "values": {
+      "providers": {}
+    },
+    "owns": [
+      "providers"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/settings.json",
+    "values": {
+      "defaultProvider": null,
+      "defaultModel": null,
+      "enableInstallTelemetry": false
+    },
+    "owns": [
+      "defaultProvider",
+      "defaultModel",
+      "enableInstallTelemetry"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/mcp.json",
+    "values": {
+      "mcpServers": null
+    },
+    "owns": [
+      "mcpServers"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/AGENTS.md",
+    "contents": ""
+  }
+]
