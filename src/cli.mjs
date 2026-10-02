@@ -4,7 +4,8 @@
  *
  *   env      print the resolved environment as shell exports
  *   seed     translate /etc/agent/config.yaml into the harness's native config
- *   serve    run the serving surface named by the manifest
+ *   serve    run the serving surface named by the manifest, or — for a task-mode
+ *            agent — the manifest's task command, once, and exit with its code
  *   doctor   check the image against the constraints the operator imposes
  *   version  print the base version
  *
@@ -16,6 +17,7 @@
  */
 
 import { readFileSync, existsSync, accessSync, constants, realpathSync } from 'node:fs';
+import { constants as osConstants } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -181,6 +183,83 @@ async function cmdSeed({ env, log }) {
   return 0;
 }
 
+/**
+ * The agent's execution mode, from the only signal the container gets.
+ *
+ * The pod is identical in both modes and the Argo object around it is not
+ * visible from inside, so `AGENT_EXECUTION_MODE` is all there is. Anything but
+ * `task` is `service`: operators predating the variable do not inject it, and a
+ * service pod started before an operator upgrade keeps its old environment.
+ *
+ * Deliberately the same rule as deepagents-adapter's `agent_config.execution_mode()`,
+ * so the two runtimes cannot disagree about what a given value means.
+ */
+export function executionMode(env = {}) {
+  return String(env.AGENT_EXECUTION_MODE ?? '').trim().toLowerCase() === 'task' ? 'task' : 'service';
+}
+
+/**
+ * The command that constitutes "the work" for a task run, or null.
+ *
+ * `serve.exec` is the fallback only for `surface: none`, where it is already the
+ * whole agent process and already exits on its own.
+ */
+export function taskCommand(manifest) {
+  const nonEmpty = (v) => (Array.isArray(v) && v.length > 0 && v.every((a) => typeof a === 'string') ? v : null);
+  return nonEmpty(manifest.task?.exec)
+    ?? (manifest.serve?.surface === 'none' ? nonEmpty(manifest.serve.exec) : null);
+}
+
+/** Run the task command to completion and report the code Argo should see. */
+async function runTaskCommand(command, { env, cwd, log }) {
+  const { spawn } = await import('node:child_process');
+  const [cmd, ...args] = command;
+
+  // stdio is inherited because `kubectl logs` is the only artifact a task run
+  // leaves behind — there is no terminal attached and no one watching.
+  const child = spawn(cmd, args, { stdio: 'inherit', env, cwd });
+
+  // Forwarded so `spec.execution.activeDeadlineSeconds` actually reaches the
+  // work, rather than killing this process and orphaning the child.
+  const forwarded = ['SIGTERM', 'SIGINT'].map((signal) => {
+    const handler = () => { try { child.kill(signal); } catch { /* already gone */ } };
+    process.on(signal, handler);
+    return [signal, handler];
+  });
+
+  try {
+    return await new Promise((resolve, reject) => {
+      child.on('error', reject);
+      child.on('exit', (code, signal) => {
+        if (signal) {
+          log.warn(`task command killed by ${signal}`);
+          resolve(128 + (osConstants.signals[signal] ?? 15));
+          return;
+        }
+        log.log(`task command exited ${code ?? 0}`);
+        resolve(code ?? 0);
+      });
+    });
+  } finally {
+    for (const [signal, handler] of forwarded) process.off(signal, handler);
+  }
+}
+
+/**
+ * Stop listening and let the event loop drain, so the process exits on its own
+ * with the code `main` set — rather than being killed by a signal it sent
+ * itself, which would surface as 143 and mark a successful run Failed.
+ */
+function closeServer(server) {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+    // A kubelet probe's keep-alive connection would otherwise hold the server
+    // open past the end of the run.
+    server.closeAllConnections?.();
+    setTimeout(resolve, 2000).unref();
+  });
+}
+
 async function cmdServe({ env, log }) {
   const { manifest, warnings } = loadManifest({ path: env.CODING_RUNTIME_MANIFEST ?? MANIFEST_PATH, env, version: version() });
   reportWarnings(warnings, log);
@@ -205,6 +284,41 @@ async function cmdServe({ env, log }) {
 
   const server = createServer({ manifest, surface, agentName: env.AGENT_NAME ?? manifest.name, log });
   await listen(server, manifest.serve.port, log);
+
+  // A task agent does its work once and exits; the exit code becomes the run's
+  // phase. The server comes up first and stays up for the whole run: the pod's
+  // probes are not gated on execution mode (the operator takes them straight
+  // from spec.deployment.*Probe), and both terminal runtimes point a startupProbe
+  // at /healthz with failureThreshold 30 at 2s — so a task run with nothing
+  // listening is killed about 65 seconds in, mid-work.
+  if (executionMode(env) === 'task') {
+    const command = taskCommand(manifest);
+    if (!command) {
+      // Exit now rather than serve forever. A Failed run naming the missing
+      // field is diagnosable; a Running one that never ends is the bug this
+      // whole branch exists to fix.
+      log.error(
+        `AGENT_EXECUTION_MODE=task but ${manifest.name} declares no task command. `
+        + 'Add a task.exec array to runtime.json — the interactive terminal.launch '
+        + 'command cannot be used, since it never exits.',
+      );
+      await surface.close();
+      await closeServer(server);
+      return 1;
+    }
+
+    log.log(`task mode: ${command.join(' ')}`);
+    let code;
+    try {
+      code = await runTaskCommand(command, { env: resolved, cwd: manifest.paths.workDir, log });
+    } catch (err) {
+      log.error(`task command ${command.join(' ')} could not be run: ${err.message}`);
+      code = 1;
+    }
+    await surface.close();
+    await closeServer(server);
+    return code;
+  }
 
   // In service mode the Argo step retries forever, so a clean shutdown is only
   // about not dropping a live terminal mid-keystroke on a config change.
@@ -257,6 +371,20 @@ async function cmdDoctor({ env, log }) {
       } catch (err) {
         check('node-pty loads', false, err.message);
       }
+    }
+
+    // Reported in both modes: an adapter author running doctor locally has no
+    // AGENT_EXECUTION_MODE set, and "would this work as a task agent?" is the
+    // question they cannot otherwise answer without deploying one.
+    const mode = executionMode(env);
+    const command = taskCommand(manifest);
+    const declared = command ? command.join(' ') : 'no task.exec — service-only';
+    if (mode === 'task') {
+      // The only one of these that can fail: in task mode a missing command
+      // means the run cannot work at all.
+      check('a task command is declared', Boolean(command), command ? declared : 'task.exec is required in task mode');
+    } else {
+      check(`execution mode is ${mode}`, true, `${env.AGENT_EXECUTION_MODE ? '' : 'AGENT_EXECUTION_MODE unset; '}${declared}`);
     }
   }
 

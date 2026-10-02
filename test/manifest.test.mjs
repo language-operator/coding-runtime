@@ -27,6 +27,30 @@ test('a terminal surface without a launch command is refused', () => {
   );
 });
 
+test('a task block is optional but must be usable when present', () => {
+  // Optional: every manifest written before task mode existed stays valid, and
+  // an adapter that only ever runs as a service never needs the block.
+  assert.deepEqual(validateManifest(base), [], 'no task block is not an error');
+
+  assert.deepEqual(validateManifest({ ...base, task: { exec: ['launch-claude-task'] } }), []);
+  assert.match(validateManifest({ ...base, task: ['nope'] }).join(' '), /task must be an object/);
+  for (const exec of [[], 'launch', [''], ['ok', 7]]) {
+    assert.match(
+      validateManifest({ ...base, task: { exec } }).join(' '),
+      /task\.exec must be a non-empty array of strings/,
+      `${JSON.stringify(exec)} cannot be spawned`,
+    );
+  }
+});
+
+test('task.exec is interpolated like the rest of the manifest', () => {
+  const { manifest } = resolveManifest(
+    { ...base, task: { exec: ['run', '${WORKSPACE}/script.sh'] } },
+    { env: {} },
+  );
+  assert.deepEqual(manifest.task.exec, ['run', '/workspace/script.sh']);
+});
+
 test('unknown surfaces and roles are rejected', () => {
   assert.match(validateManifest({ ...base, serve: { surface: 'proxy' } }).join(' '), /serve\.surface must be one of/);
   assert.match(validateManifest({ ...base, role: 'sidecar' }).join(' '), /role must be one of/);
