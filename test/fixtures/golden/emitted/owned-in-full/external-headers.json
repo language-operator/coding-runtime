@@ -1,0 +1,29 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": "claude-sonnet-4-5",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "servers": {
+        "control-plane": {
+          "url": "https://cloud.example.com/mcp"
+        },
+        "partial": {
+          "url": "https://other.example.com/mcp"
+        },
+        "in-cluster": {
+          "url": "http://tool.default.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": null
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]

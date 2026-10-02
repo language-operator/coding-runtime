@@ -23,7 +23,7 @@ language and whether it needs a terminal, not about Python's availability.
 | `src/config/` | the ETL. `normalize.mjs` is the centre of gravity |
 | `src/serve/` | the HTTP server and its surfaces (`terminal`, `none`) |
 | `src/cli.mjs` | `coding-runtime env \| seed \| serve \| doctor \| version` |
-| `examples/` | reference adapters; they double as the authoring documentation |
+| `examples/` | one emitter per behaviour of the contract — never a copy of a downstream adapter |
 | `test/fixtures/` | the shared corpus — operator inputs plus goldens |
 | `docs/` | the adapter contract and the normalized config schema |
 
@@ -69,6 +69,16 @@ Secrets follow a matching rule: the operator's `$(NAME)` references stay opaque 
 normalized document and are rendered by the emitter, so a credential reaches neither the
 debug snapshot nor a harness config on the volume.
 
+## Examples demonstrate behaviours, not consumers
+
+`examples/` holds one small emitter per behaviour of the contract. When a consumer
+reports a problem in a behaviour, **TDD that behaviour here — do not copy the
+downstream adapter.** These directories once held byte-identical mirrors of three
+adapter repos, reconciled by a weekly cron; that ran the dependency backwards (the
+base downstream of its own consumers) and mutated this repo's regression corpus
+whenever a downstream edited its emitter. A real adapter's output shape is verified
+in its own repository, against the base digest it pins.
+
 ## Working here
 
 ```bash
@@ -102,7 +112,7 @@ Mirror the PR CI jobs in `.github/workflows/test.yaml` — `unit`, `shellcheck` 
 ## Releasing, and what reaches adapters
 
 Adapters pin this image by **tag and digest**, so nothing here reaches them until they
-bump — and `examples/*/runtime.json` `requires.codingRuntime` declares the floor an
-adapter needs. Raise that floor whenever the examples come to depend on something a
-release adds, not only when a range would break. `/release major|minor|patch` handles the
-rest and stops for confirmation before publishing.
+bump. A real adapter's `requires.codingRuntime` floor is its own to declare, in its own
+repository; `examples/*/runtime.json` declares the floor each *behaviour* needs, so raise
+one only when that behaviour comes to depend on something a release adds.
+`/release major|minor|patch` handles the rest and stops for confirmation before publishing.

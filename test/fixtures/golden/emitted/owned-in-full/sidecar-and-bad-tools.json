@@ -1,0 +1,26 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": "claude-sonnet-4-5",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "servers": {
+        "sidecar-tool": {
+          "url": "http://localhost:8080/mcp"
+        },
+        "service-tool": {
+          "url": "http://remote.tools.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": null
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]

@@ -79,8 +79,8 @@ jobs:
 
       # Base mode cannot reach the serving surface, because the base ships no
       # manifest — so tmux, the pty and the WebSocket bridge would otherwise
-      # first run in whichever adapter migrated first. This builds a minimal
-      # adapter from the *shipped* example manifest and emitter and exercises
+      # first run in whichever adapter migrated first. This builds an adapter
+      # from `examples/minimal/`, the documented starting point, and exercises
       # the whole path here instead.
       - name: Build the fixture adapter
         if: matrix.variant == 'thick'

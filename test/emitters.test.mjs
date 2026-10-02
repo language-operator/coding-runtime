@@ -11,15 +11,36 @@ import { caseNames, loadCase, GOLDEN_DIR, FIXED_INPUTS } from './helpers/corpus.
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const UPDATE = process.env.UPDATE_GOLDENS === '1';
 
-// Every adapter runs against the same corpus. That is the point: a change to
-// the normalizer shows up as a diff in each harness's emitted config at once,
-// instead of surfacing one runtime at a time in production.
-const ADAPTERS = ['claude-code', 'opencode', 'pi'];
+// Each example demonstrates one behaviour of the emitter contract, and every one
+// runs against the same corpus. That is the point: a change to the normalizer
+// shows up as a diff in each behaviour at once, instead of surfacing one at a
+// time in production.
+//
+// These are examples, not copies of adapters. An adapter's own output shape is
+// its business and is tested in its own repository, against the base digest it
+// pins — the one arrangement without a dependency cycle. What is tested here is
+// only what this runtime promises.
+const EXAMPLES = ['minimal', 'opinion-withheld', 'owned-in-full', 'secret-references'];
 
-for (const adapter of ADAPTERS) {
-  test(`${adapter} emits stable config for every fixture`, async (t) => {
-    const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
-    const outDir = join(GOLDEN_DIR, 'emitted', adapter);
+const emitterFor = (example) => import(join(REPO, 'examples', example, 'emit.mjs'));
+
+/** Normalize a corpus case and emit it, with warnings collected. */
+async function emitCase(example, name, { env: envOverride, ctx } = {}) {
+  const { emit } = await emitterFor(example);
+  const { yamlText, env: caseEnv } = loadCase(name);
+  const env = envOverride ?? caseEnv;
+  const warnings = [];
+  const config = normalize({ yamlText, env, ...FIXED_INPUTS });
+  const writes = emit(config, ctx ?? emitterContext({ env, onWarn: (w) => warnings.push(w) }));
+  return { writes, warnings, config, env };
+}
+
+const fileNamed = (writes, name) => writes.find((w) => w.path.endsWith(`/${name}`));
+
+for (const example of EXAMPLES) {
+  test(`${example} emits stable config for every fixture`, async (t) => {
+    const { emit } = await emitterFor(example);
+    const outDir = join(GOLDEN_DIR, 'emitted', example);
     mkdirSync(outDir, { recursive: true });
 
     for (const name of caseNames()) {
@@ -34,233 +55,208 @@ for (const adapter of ADAPTERS) {
           writeFileSync(goldenPath, actual);
           return;
         }
-        assert.ok(existsSync(goldenPath), `no golden for ${adapter}/${name}; run UPDATE_GOLDENS=1 npm test`);
+        assert.ok(existsSync(goldenPath), `no golden for ${example}/${name}; run UPDATE_GOLDENS=1 npm test`);
         assert.deepEqual(JSON.parse(actual), JSON.parse(readFileSync(goldenPath, 'utf8')));
       });
     }
   });
 }
 
-test('claude-code selects the model the operator marked primary', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'claude-code', 'emit.mjs'));
-  const { yamlText, env } = loadCase('primary-not-first');
-  const [settings] = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
-
-  // The shipping adapter takes the first mapping key here and would pick gpt-4o.
-  assert.equal(settings.values.model, 'claude-sonnet-4-5');
-});
-
-test('claude-code leaves the Anthropic endpoint alone', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'claude-code', 'emit.mjs'));
-  const { yamlText, env } = loadCase('spec-agents-example');
-  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
-
-  // Claude Code talks to api.anthropic.com, not the cluster gateway. Asserted
-  // so that if that ever changes it is a deliberate edit to this test.
-  const serialized = JSON.stringify(writes);
-  assert.ok(!serialized.includes('ANTHROPIC_BASE_URL'));
-  assert.ok(!serialized.includes('sk-langop-proxy'));
-});
-
-/** Managed values may be an object or [path, value] entries; read either. */
-const asMap = (values) => new Map(
-  (Array.isArray(values) ? values : Object.entries(values)).map(([k, v]) => [Array.isArray(k) ? k.join('.') : k, v]),
-);
-
-test('claude-code only seeds the onboarding stub when a token is present', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'claude-code', 'emit.mjs'));
-  const { yamlText } = loadCase('spec-agents-example');
-  const config = normalize({ yamlText, env: {}, ...FIXED_INPUTS });
-
-  const without = asMap(emit(config, { env: {} })[1].values);
-  assert.ok(!without.has('oauthAccount'), 'an interactive /login agent must not be told it is onboarded');
-
-  const withToken = asMap(emit(config, { env: { CLAUDE_CODE_OAUTH_TOKEN: 'tok' } })[1].values);
-  assert.equal(withToken.get('hasCompletedOnboarding'), true);
-  assert.equal(withToken.get('oauthAccount').displayName, 'data-analyst');
-});
-
-test('claude-code pre-trusts the workspace, which is a real grant worth asserting', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'claude-code', 'emit.mjs'));
-  const { yamlText, env } = loadCase('spec-agents-example');
-  const values = asMap(emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env })[1].values);
-
-  // Trusting /workspace means anything on the cloned repository's tracked
-  // branch runs in the pod unprompted. Deliberate, but it should never change
-  // silently.
-  assert.equal(values.get('projects./workspace.hasTrustDialogAccepted'), true);
-});
-
-test('opencode registers every model behind the one gateway provider', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
-  const { yamlText, env } = loadCase('primary-not-first');
-  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
-  const config = writes.at(-1).values;
-
-  assert.equal(config.model, 'openai/claude-sonnet-4-5', 'the primary model is the default');
-  assert.deepEqual(Object.keys(config.provider.openai.models).sort(), ['claude-sonnet-4-5', 'gpt-4o', 'gpt-4o-mini']);
-  assert.match(config.provider.openai.options.baseURL, /:8000\/v1$/, 'opencode speaks the OpenAI shape');
-  assert.equal(config.provider.openai.options.apiKey, 'sk-langop-proxy');
-});
-
-test('opencode turns persona and instructions into standing context', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
-  const { yamlText, env } = loadCase('spec-agents-example');
-  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
-
-  const instructions = writes.find((w) => w.path.endsWith('instructions.md'));
-  assert.ok(instructions, 'instructions must reach the harness somehow');
-  assert.match(instructions.contents, /Tone: professional\./, 'the persona is the identity half');
-  assert.match(instructions.contents, /analyst/, 'the instructions are the task half');
-  assert.deepEqual(writes.at(-1).values.instructions, [instructions.path]);
-});
-
-test('every emitter declares ownership of everything it writes', async (t) => {
-  // writeManagedJson throws on an undeclared key, so this catches the mistake
-  // at test time rather than the first time a tool is removed in production.
+test('every example declares ownership of everything it writes', async (t) => {
+  // writeManagedJson throws on an undeclared key, so this catches the mistake at
+  // test time rather than the first time a key needs removing in production.
   const { applyWrites } = await import('../src/emit.mjs');
   const { mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
 
-  for (const adapter of ADAPTERS) {
-    await t.test(adapter, async () => {
-      const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
-      const dir = mkdtempSync(join(tmpdir(), `cr-${adapter}-`));
+  for (const example of EXAMPLES) {
+    await t.test(example, async () => {
+      const { emit } = await emitterFor(example);
+      const dir = mkdtempSync(join(tmpdir(), `cr-${example}-`));
       for (const name of caseNames()) {
         const { yamlText, env } = loadCase(name);
         const config = normalize({ yamlText, env, ...FIXED_INPUTS, paths: { workspace: dir } });
         // Rewrite absolute paths into the scratch dir so nothing escapes it.
         const writes = emit(config, emitterContext({ env })).map((wr) => ({ ...wr, path: join(dir, wr.path.replace(/^\//, '')) }));
-        assert.doesNotThrow(() => applyWrites(writes), `${adapter}/${name} wrote an undeclared key`);
+        assert.doesNotThrow(() => applyWrites(writes), `${example}/${name} wrote an undeclared key`);
       }
     });
   }
 });
 
-// The external-headers case sets CONTROL_PLANE_TOKEN and leaves MISSING_TOKEN
-// unset. Both emitters must write the client's own env reference, never the
-// token, and leave the server with an unresolvable header out entirely.
-for (const [adapter, expectRef, extra] of [
-  ['claude-code', '${CONTROL_PLANE_TOKEN}', {}],
-  ['opencode', '{env:CONTROL_PLANE_TOKEN}', { timeout: 30000, oauth: false }],
-  ['pi', '${CONTROL_PLANE_TOKEN}', { timeout: 30 }],
-]) {
-  test(`${adapter} sends external MCP headers as an environment reference`, async () => {
-    const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
-    const { yamlText, env } = loadCase('external-headers');
-    const warnings = [];
-    const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env, onWarn: (w) => warnings.push(w) }));
+// ---------------------------------------------------------------------------
+// A key owned in full is supplied every run, null included
+// ---------------------------------------------------------------------------
 
-    const serialized = JSON.stringify(writes);
-    assert.ok(!serialized.includes(env.CONTROL_PLANE_TOKEN), 'the token must never be written to disk');
-    assert.ok(!serialized.includes('$(CONTROL_PLANE_TOKEN)'), 'the operator syntax must be translated');
+test('owned-in-full answers every declared key on every run', async () => {
+  // The guarantee is about shape, not content, so it must hold for a config that
+  // sets nothing as much as for one that sets everything. A key in `owns` that
+  // goes unanswered is the bug this asserts against.
+  for (const name of ['minimal', 'spec-agents-example']) {
+    const { writes } = await emitCase('owned-in-full', name);
+    const [{ values, owns }] = writes;
+    assert.deepEqual(Object.keys(values).sort(), [...owns].sort(), `${name} left an owned key unanswered`);
+  }
+});
 
-    const servers = findMcpServers(adapter, writes);
-    assert.deepEqual(servers['control-plane'].headers, { Authorization: `Bearer ${expectRef}`, 'X-Agent': 'external' });
-    for (const [k, v] of Object.entries(extra)) assert.equal(servers['control-plane'][k], v);
-    assert.equal(servers['in-cluster'].headers, undefined, 'in-cluster tools carry no headers key');
-    assert.equal(servers['in-cluster'].timeout, undefined);
-    assert.equal(servers['in-cluster'].oauth, undefined);
-    assert.equal(servers.partial, undefined, 'a server with an unrenderable header is not configured at all');
-    assert.deepEqual(warnings.map((w) => [w.code, w.path]), [['HEADERS_UNRESOLVED', 'tools.partial.headers']]);
+test('owned-in-full states "nothing configured" as null rather than by omission', async () => {
+  // null removes the key whoever last wrote it. Omitting it instead would fall
+  // through to provenance, and a key with no provenance record is never deleted —
+  // so a withdrawn tool would outlive the withdrawal rather than survive one boot.
+  const { writes } = await emitCase('owned-in-full', 'minimal');
+  const [{ values }] = writes;
+  assert.deepEqual(values, { model: null, models: null, servers: null, instructions: null });
+});
+
+// ---------------------------------------------------------------------------
+// A key the runtime only sometimes has an opinion about is omitted
+// ---------------------------------------------------------------------------
+
+test('opinion-withheld omits what it has no opinion about, so provenance protects the user', async () => {
+  const { writes } = await emitCase('opinion-withheld', 'minimal');
+  const [{ values, owns }] = writes;
+
+  // `minimal` configures no model. The user may have chosen one in the harness,
+  // and that choice is not the runtime's to discard — so the key is absent, not
+  // null. This is the distinction that once deleted login state on every boot.
+  assert.ok(owns.includes('model'), 'the key is still declared; declaring is not promising');
+  assert.ok(!('model' in values), 'an unsupplied key must be absent, never null');
+  // The positive control: something was written, so the absence above is a
+  // decision rather than an empty file.
+  assert.equal(values.managedBy, 'coding-runtime');
+});
+
+test('opinion-withheld asserts authority only when it actually has it', async () => {
+  // Without a token the agent logs in interactively. Telling it onboarding is
+  // complete would skip the flow that obtains its credentials.
+  const { writes: without } = await emitCase('opinion-withheld', 'spec-agents-example', { env: {} });
+  const [{ values: interactive }] = without;
+  assert.ok(!('onboardingCompleted' in interactive), 'an interactive-login agent must not be told it is onboarded');
+  assert.ok(!('account' in interactive));
+
+  const { writes: withToken } = await emitCase('opinion-withheld', 'spec-agents-example', {
+    env: { AGENT_SESSION_TOKEN: 'tok' },
+  });
+  const [{ values: provisioned }] = withToken;
+  assert.equal(provisioned.onboardingCompleted, true);
+  assert.equal(provisioned.account.displayName, 'data-analyst');
+});
+
+// ---------------------------------------------------------------------------
+// Credentials reach the harness as references, never values
+// ---------------------------------------------------------------------------
+
+test('secret-references writes an environment reference, never the token', async () => {
+  const { writes, warnings, env } = await emitCase('secret-references', 'external-headers');
+  const serialized = JSON.stringify(writes);
+
+  assert.ok(!serialized.includes(env.CONTROL_PLANE_TOKEN), 'the token must never be written to disk');
+  assert.ok(!serialized.includes('$(CONTROL_PLANE_TOKEN)'), 'the operator syntax must be translated');
+
+  const { servers } = fileNamed(writes, 'mcp.json').values;
+  assert.deepEqual(servers['control-plane'].headers, {
+    Authorization: 'Bearer {{env:CONTROL_PLANE_TOKEN}}',
+    'X-Agent': 'external',
   });
 
-  test(`${adapter} fails the seed loudly on a base runtime without renderHeaders`, async () => {
-    const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
-    const { yamlText, env } = loadCase('external-headers');
-    assert.throws(() => emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env }), /renderHeaders/);
+  // An in-cluster tool needs no credential, so it gains no headers key at all.
+  assert.equal(servers['in-cluster'].headers, undefined);
 
-    // Tools without headers keep working on such a base.
-    const plain = loadCase('sidecar-and-bad-tools');
-    const servers = findMcpServers(adapter, emit(normalize({ yamlText: plain.yamlText, env: plain.env, ...FIXED_INPUTS }), { env: plain.env }));
-    assert.ok(servers['service-tool']);
-  });
-}
+  // `partial` references MISSING_TOKEN, which the fixture leaves unset. Rendering
+  // is all-or-nothing, so the server is left out entirely rather than configured
+  // without auth to 401 with nothing pointing at the cause.
+  assert.equal(servers.partial, undefined, 'a server with an unrenderable header is not configured at all');
+  assert.deepEqual(warnings.map((w) => [w.code, w.path]), [['HEADERS_UNRESOLVED', 'tools.partial.headers']]);
+});
 
-test('claude-code refuses a header that references one of its own credential variables', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'claude-code', 'emit.mjs'));
-  const yamlText = 'tools:\n  ext: {endpoint: https://x.example/mcp, headers: {Authorization: Bearer $(ANTHROPIC_API_KEY)}}\n';
-  const env = { ANTHROPIC_API_KEY: 'set-but-unusable' };
+test('secret-references refuses a header referencing a variable the harness will not expand', async () => {
+  const { emit } = await emitterFor('secret-references');
+  const yamlText = 'tools:\n  ext: {endpoint: https://x.example/mcp, headers: {Authorization: Bearer $(HARNESS_API_KEY)}}\n';
+  const env = { HARNESS_API_KEY: 'set-but-unusable' };
   const warnings = [];
+
   const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env, onWarn: (w) => warnings.push(w) }));
-  // Claude Code would expand it to empty and the server would 401 with no
-  // explanation. `mcpServers` is still supplied — as null, which removes it —
-  // because this map is owned in full and an omission would leave whatever was
-  // there before in place.
-  const claudeJson = writes.find((w) => w.path.endsWith('.claude.json'));
-  assert.deepEqual(claudeJson.values.find(([key]) => key === 'mcpServers'), ['mcpServers', null]);
+
+  // The harness reads its own credential variable as empty inside MCP headers, so
+  // the server would 401 with no explanation. `servers` is still supplied — as
+  // null, because it is owned in full and an omission would leave a previously
+  // written server in place.
+  assert.deepEqual(fileNamed(writes, 'mcp.json').values, { servers: null });
   assert.deepEqual(warnings.map((w) => w.code), ['HEADERS_RESERVED']);
 });
 
-function findMcpServers(adapter, writes) {
-  if (adapter === 'claude-code') {
-    const claudeJson = writes.find((w) => w.path.endsWith('.claude.json'));
-    return claudeJson.values.find(([key]) => key === 'mcpServers')[1];
-  }
-  if (adapter === 'pi') return writes.find((w) => w.path.endsWith('/mcp.json')).values.mcpServers;
-  return writes.find((w) => w.path.endsWith('opencode.jsonc')).values.mcp;
-}
-
-test('opencode writes the gateway key as a reference, not a credential', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
+test('secret-references keeps the gateway key a reference, not a credential', async () => {
+  const { emit } = await emitterFor('secret-references');
   const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
   const SECRET = 'sk-langop-agent7.deadbeefcafe';
   const env = { MODEL_API_KEY: SECRET };
 
   const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
 
-  assert.equal(writes.at(-1).values.provider.openai.options.apiKey, '{env:MODEL_API_KEY}');
-  assert.ok(!JSON.stringify(writes).includes(SECRET), 'opencode.jsonc lives on the PVC; the key must not');
+  const { gateway } = fileNamed(writes, 'models.json').values.providers;
+  assert.equal(gateway.apiKey, '{{env:MODEL_API_KEY}}');
+  assert.ok(!JSON.stringify(writes).includes(SECRET), 'models.json lives on the workspace volume; the key must not');
 });
 
-test('opencode falls back to the placeholder on a base without renderRef', async () => {
-  // An adapter image can ship a newer emitter than its base. Losing per-agent
-  // attribution is acceptable; failing the boot over it is not.
-  const { emit } = await import(join(REPO, 'examples', 'opencode', 'emit.mjs'));
+test('secret-references keeps an owned mapping valid when the gateway is withdrawn', async () => {
+  // `providers` is owned in full, but this harness rejects a models.json without
+  // one — so "nothing configured" is an empty map here, not null.
+  const { writes } = await emitCase('secret-references', 'minimal');
+  assert.deepEqual(fileNamed(writes, 'models.json').values, { providers: {} });
+});
+
+// ---------------------------------------------------------------------------
+// An adapter may ship a newer emitter than its base
+// ---------------------------------------------------------------------------
+
+test('secret-references fails the seed loudly on a base without renderHeaders', async () => {
+  const { emit } = await emitterFor('secret-references');
+  const { yamlText, env } = loadCase('external-headers');
+
+  // Honest failure: a header-bearing server cannot be configured correctly here,
+  // and configuring it anyway would fail later with nothing pointing at the cause.
+  assert.throws(() => emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env }), /renderHeaders/);
+
+  // Tools without headers keep working on such a base.
+  const plain = loadCase('sidecar-and-bad-tools');
+  const writes = emit(normalize({ yamlText: plain.yamlText, env: plain.env, ...FIXED_INPUTS }), { env: plain.env });
+  assert.ok(fileNamed(writes, 'mcp.json').values.servers['service-tool']);
+});
+
+test('secret-references degrades rather than fails on a base without renderRef', async () => {
+  // Losing per-agent attribution is acceptable; failing the boot over it would
+  // make an optional feature a hard dependency on the base version. The contrast
+  // with renderHeaders above is the behaviour being pinned.
+  const { emit } = await emitterFor('secret-references');
   const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
   const env = { MODEL_API_KEY: 'sk-real' };
 
   const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
 
-  assert.equal(writes.at(-1).values.provider.openai.options.apiKey, 'sk-langop-proxy');
+  assert.equal(fileNamed(writes, 'models.json').values.providers.gateway.apiKey, 'sk-langop-proxy');
 });
 
-const piFile = (writes, name) => writes.find((w) => w.path.endsWith(`/pi/${name}`));
+// ---------------------------------------------------------------------------
+// A value the harness would execute is never written
+// ---------------------------------------------------------------------------
 
-test('pi registers the gateway as its own provider, keyed by reference', async () => {
-  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
-  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
-  const SECRET = 'sk-langop-agent7.deadbeefcafe';
-  const env = { MODEL_API_KEY: SECRET };
+test('secret-references never writes a value its harness would run as a command', async () => {
+  // Nothing in the normalized document is validated against a particular
+  // harness's quirks — it cannot be, since the quirk belongs to the harness — so
+  // guarding against one is the emitter's job. This harness runs any value
+  // beginning with `!` as a shell command.
+  const { emit } = await emitterFor('secret-references');
 
-  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
+  const yamlText = 'tools:\n  ext: {endpoint: https://x.example/mcp, headers: {Authorization: "!cat /etc/passwd"}}\n';
+  assert.throws(
+    () => emit(normalize({ yamlText, env: {}, ...FIXED_INPUTS }), emitterContext({ env: {} })),
+    /shell command/,
+  );
 
-  const provider = piFile(writes, 'models.json').values.providers.langop;
-  assert.equal(provider.api, 'openai-completions');
-  assert.match(provider.baseUrl, /:8000\/v1$/);
-  assert.equal(provider.apiKey, '${MODEL_API_KEY}');
-  assert.deepEqual(piFile(writes, 'settings.json').values, { defaultProvider: 'langop', defaultModel: 'x', enableInstallTelemetry: false });
-  assert.ok(!JSON.stringify(writes).includes(SECRET), 'models.json lives on the PVC; the key must not');
-});
-
-test('pi keeps models.json valid when there is no gateway', async () => {
-  // pi rejects a models.json without `providers`, so withdrawing the gateway
-  // must leave an empty map rather than an empty file.
-  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
-  const { yamlText, env } = loadCase('minimal');
-  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
-  assert.deepEqual(piFile(writes, 'models.json').values, { providers: {} });
-  assert.equal(piFile(writes, 'AGENTS.md').contents, '', 'withdrawn instructions are cleared, not left in force');
-});
-
-test('pi never writes a value it would run as a command', async () => {
-  // pi executes any models.json or mcp.json value that starts with `!`.
-  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
-  const header = 'tools:\n  ext: {endpoint: https://x.example/mcp, headers: {Authorization: "!cat /etc/passwd"}}\n';
-  assert.throws(() => emit(normalize({ yamlText: header, env: {}, ...FIXED_INPUTS }), emitterContext({ env: {} })), /shell command/);
-
+  // The gateway key falls back instead of throwing, for the same reason it falls
+  // back on an old base: it costs attribution, not correctness.
   const config = normalize({ yamlText: 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n', env: {}, ...FIXED_INPUTS });
   config.gateway.apiKeyRef = '!rm -rf ~';
   const writes = emit(config, emitterContext({ env: {} }));
-  assert.equal(piFile(writes, 'models.json').values.providers.langop.apiKey, 'sk-langop-proxy');
+  assert.equal(fileNamed(writes, 'models.json').values.providers.gateway.apiKey, 'sk-langop-proxy');
 });

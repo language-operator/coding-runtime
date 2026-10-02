@@ -1,0 +1,20 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/secret-references/mcp.json",
+    "owns": [
+      "servers"
+    ],
+    "values": {
+      "servers": null
+    }
+  },
+  {
+    "path": "/workspace/.coding-runtime/secret-references/models.json",
+    "owns": [
+      "providers"
+    ],
+    "values": {
+      "providers": {}
+    }
+  }
+]

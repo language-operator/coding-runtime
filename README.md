@@ -62,9 +62,11 @@ Pin a **released tag, by digest** — never `:latest`, and never a build from
 `requires.codingRuntime` range can satisfy, so every boot warns about a version
 mismatch that is not really one. Releases are what adapters are meant to build on.
 
-See [`examples/`](examples/) for working `runtime.json` and `emit.mjs` pairs for
-claude-code and opencode, and [docs/authoring-an-adapter.md](docs/authoring-an-adapter.md)
-for the walkthrough.
+See [docs/authoring-an-adapter.md](docs/authoring-an-adapter.md) for the walkthrough,
+and [`examples/`](examples/) for a `runtime.json` and `emit.mjs` pair per behaviour of
+the contract — start with `examples/minimal/`. For a complete real adapter, read
+[`claude-code-adapter`](https://github.com/language-operator/claude-code-adapter)
+or [`opencode-adapter`](https://github.com/language-operator/opencode-adapter).
 
 ## What the base does at startup
 

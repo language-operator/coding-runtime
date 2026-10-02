@@ -1,0 +1,11 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/minimal/settings.json",
+    "owns": [
+      "model"
+    ],
+    "values": {
+      "model": null
+    }
+  }
+]

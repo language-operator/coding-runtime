@@ -1,0 +1,17 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": null,
+      "models": null,
+      "servers": null,
+      "instructions": null
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]

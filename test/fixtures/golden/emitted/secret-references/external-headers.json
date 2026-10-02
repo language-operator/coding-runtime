@@ -1,0 +1,36 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/secret-references/mcp.json",
+    "owns": [
+      "servers"
+    ],
+    "values": {
+      "servers": {
+        "control-plane": {
+          "url": "https://cloud.example.com/mcp",
+          "headers": {
+            "Authorization": "Bearer {{env:CONTROL_PLANE_TOKEN}}",
+            "X-Agent": "external"
+          }
+        },
+        "in-cluster": {
+          "url": "http://tool.default.svc.cluster.local:8080/mcp"
+        }
+      }
+    }
+  },
+  {
+    "path": "/workspace/.coding-runtime/secret-references/models.json",
+    "owns": [
+      "providers"
+    ],
+    "values": {
+      "providers": {
+        "gateway": {
+          "baseUrl": "http://gateway.default.svc.cluster.local:8000/v1",
+          "apiKey": "sk-langop-proxy"
+        }
+      }
+    }
+  }
+]

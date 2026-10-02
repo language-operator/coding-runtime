@@ -1,0 +1,15 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/opinion-withheld/state.json",
+    "values": {
+      "managedBy": "coding-runtime",
+      "model": "claude-sonnet-4-5"
+    },
+    "owns": [
+      "managedBy",
+      "model",
+      "onboardingCompleted",
+      "account"
+    ]
+  }
+]

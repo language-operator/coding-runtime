@@ -1,0 +1,26 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": "claude-sonnet-4-5",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "servers": {
+        "mem0-memory": {
+          "url": "http://mem0-memory.tools.svc.cluster.local:8080/mcp"
+        },
+        "python-executor": {
+          "url": "http://python-executor.tools.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": "You are a data analyst. Analyze CSV files and generate insights.\nFocus on trends, anomalies, and actionable recommendations.\nAlways cite data sources and use structured output."
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]
