@@ -22,7 +22,8 @@ thing the base ever reads, so adding a new harness never means editing the base.
     "launch": ["launch-claude"],
     "cwd": "${WORKDIR}",
     "keepaliveSeconds": 25
-  }
+  },
+  "task": { "exec": ["launch-claude-task"] }
 }
 ```
 
@@ -44,6 +45,47 @@ thing the base ever reads, so adding a new harness never means editing the base.
 | `serve.exposeManifest` | Publish the whole manifest at `/runtime.json`. Off by default. |
 | `serve.exec` | With `surface: none`, the command the base execs instead of serving. |
 | `terminal.launch` | Argv run inside tmux. Required for a terminal surface — the base has no default. |
+| `task.exec` | Argv for a task-mode run. Required to support `spec.execution.mode: task`; see below. |
+
+### Execution modes
+
+A `LanguageAgent` is either a service or a task, and the pod is identical either
+way — so `AGENT_EXECUTION_MODE` is the only signal the container gets. Anything
+but `task` means `service`, unset included: operators that predate the variable
+do not inject it.
+
+- **`service`** — serve and keep running. Nothing to do; this is the default.
+- **`task`** — do the work once and exit. The exit code becomes the run's phase,
+  so `0` is `Succeeded` and anything else is `Failed`.
+
+In task mode the base runs `task.exec` to completion and exits with its code.
+Declaring it is what makes an adapter usable as a task agent:
+
+```json
+"task": { "exec": ["launch-claude-task"] }
+```
+
+It has to be a *separate* command from `terminal.launch`. The terminal launcher
+starts an interactive TUI that never exits, and the terminal surface only starts
+it when a browser connects — in task mode nobody does, so nothing would run at
+all. A task command is the harness's non-interactive form, usually its
+instructions-in, text-out mode. With `surface: none`, `serve.exec` is used when
+`task.exec` is absent, since that process is already the whole agent and already
+exits on its own.
+
+An adapter that declares neither fails the run immediately with a message naming
+`task.exec`, rather than serving until something kills it.
+
+**The HTTP server stays up for the whole task run.** Probes are not gated on
+execution mode — the operator takes them straight from `spec.deployment.*Probe`
+— and the terminal runtimes aim a `startupProbe` at `/healthz` with
+`failureThreshold: 30` at `periodSeconds: 2`. A task run with nothing listening
+is killed about 65 seconds in, mid-work. So the base listens first, runs the
+task, then closes the server and exits.
+
+SIGTERM and SIGINT are forwarded to the task command, so
+`spec.execution.activeDeadlineSeconds` reaches the work instead of orphaning it.
+A command killed by a signal reports `128 + signal`.
 
 ### Template variables
 

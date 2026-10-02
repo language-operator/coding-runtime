@@ -219,6 +219,93 @@ else
     check "a version is recorded"        run '[ -s /opt/coding-runtime/VERSION ]'
 fi
 
+if has_cli; then
+    echo "== execution mode =="
+
+    # Written into the workspace and pointed at with CODING_RUNTIME_MANIFEST, so
+    # these checks need no change to examples/ and work against the base image
+    # and a real adapter alike.
+    task_manifest() {
+        cat > "$WORKDIR/workspace/$1" <<JSON
+{
+  "schemaVersion": 1,
+  "name": "conformance-task",
+  "serve": { "surface": "terminal", "port": 8080 },
+  "terminal": { "launch": ["sh", "-c", "sleep 3600"] }${2:+,}
+  ${2:-}
+}
+JSON
+    }
+
+    run_mode() {
+        docker run --rm \
+            --read-only --tmpfs /tmp:rw,size=64m \
+            --user 1000:1000 --cap-drop ALL \
+            -v "$WORKDIR/workspace:/workspace" \
+            -v "$WORKDIR/etc-agent:/etc/agent:ro" \
+            -e AGENT_NAME=conformance -e HOME=/workspace/.home \
+            -e AGENT_EXECUTION_MODE="$1" \
+            -e CODING_RUNTIME_MANIFEST="/workspace/$2" \
+            "$IMAGE" 2>&1
+    }
+
+    exits_with() {
+        local want="$1" mode="$2" file="$3" out status=0
+        out="$(run_mode "$mode" "$file")" || status=$?
+        [ "$status" = "$want" ] && return 0
+        printf '%s\n' "wanted exit $want, got $status" "$out"
+        return 1
+    }
+
+    # The task command's own success depends on reaching /healthz, so exit 0
+    # proves both that the run ended and that the server answered while it was
+    # working. That second half is not incidental: the pod's probes are not
+    # gated on execution mode, and both terminal runtimes aim a startupProbe at
+    # /healthz with failureThreshold 30 at 2s — so a task run with nothing
+    # listening is killed about 65 seconds in, mid-work.
+    task_manifest task-probe.json '"task": { "exec": ["sh", "-c", "curl -fsS http://127.0.0.1:${PORT}/healthz"] }'
+    check "a task run exits, and /healthz answers while it runs" \
+        exits_with 0 task task-probe.json
+
+    # The exit code is the run's phase, so it has to survive unchanged.
+    task_manifest task-exit3.json '"task": { "exec": ["sh", "-c", "exit 3"] }'
+    check "a task run's exit code reaches the caller" \
+        exits_with 3 task task-exit3.json
+
+    # An adapter that has not adopted task mode must fail legibly rather than
+    # hang: a Running workflow that never ends is the defect this replaced.
+    task_manifest task-none.json
+    names_task_exec() {
+        local out status=0
+        out="$(run_mode task task-none.json)" || status=$?
+        [ "$status" != 0 ] && printf '%s' "$out" | grep -q 'task\.exec' && return 0
+        printf '%s\n' "status=$status (wanted non-zero, output naming task.exec)" "$out"
+        return 1
+    }
+    check "task mode without a task command fails loudly" names_task_exec
+
+    # The inverse regression, and the worse one: a service agent that exits is
+    # every long-running agent dying at boot. `timeout` killing it is the pass.
+    stays_up_in_service_mode() {
+        local status=0
+        timeout 12 docker run --rm \
+            --read-only --tmpfs /tmp:rw,size=64m \
+            --user 1000:1000 --cap-drop ALL \
+            -v "$WORKDIR/workspace:/workspace" \
+            -v "$WORKDIR/etc-agent:/etc/agent:ro" \
+            -e AGENT_NAME=conformance -e HOME=/workspace/.home \
+            -e AGENT_EXECUTION_MODE=service \
+            -e CODING_RUNTIME_MANIFEST=/workspace/task-probe.json \
+            "$IMAGE" >/dev/null 2>&1 || status=$?
+        # 124 is `timeout` reaping a process that was still running.
+        [ "$status" = 124 ] && return 0
+        echo "service mode exited on its own with $status"
+        return 1
+    }
+    check "service mode keeps running even with a task command declared" \
+        stays_up_in_service_mode
+fi
+
 if [ "$MODE" = base ]; then
     if has_cli; then
         # A base image ships no manifest — an adapter supplies it — so doctor is

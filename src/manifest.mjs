@@ -109,6 +109,25 @@ export function validateManifest(raw) {
     }
   }
 
+  // What to run for a `spec.execution.mode: task` agent. Optional, because the
+  // harness invocation differs from the interactive one and only the adapter
+  // knows it: a terminal adapter's `terminal.launch` is a TUI that would never
+  // exit. An adapter without this block simply does not support task mode, and
+  // `serve` says so rather than hanging.
+  if (raw.task !== undefined) {
+    if (!isMapping(raw.task)) {
+      errors.push('task must be an object');
+    } else if (raw.task.exec !== undefined
+        && (!Array.isArray(raw.task.exec)
+            || raw.task.exec.length === 0
+            || !raw.task.exec.every((a) => typeof a === 'string')
+            // A blank argv[0] is not spawnable, and fails at the point of use
+            // rather than here, where the adapter author would see it.
+            || raw.task.exec[0].trim() === '')) {
+      errors.push('task.exec must be a non-empty array of strings');
+    }
+  }
+
   if (raw.serve?.surface === 'terminal') {
     const terminal = raw.terminal;
     if (!isMapping(terminal)) {

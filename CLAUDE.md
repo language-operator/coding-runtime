@@ -27,7 +27,7 @@ language and whether it needs a terminal, not about Python's availability.
 | `test/fixtures/` | the shared corpus — operator inputs plus goldens |
 | `docs/` | the adapter contract and the normalized config schema |
 
-## Three constraints that explain most of the code
+## Four constraints that explain most of the code
 
 The operator imposes these on every agent container and an adapter cannot override them:
 
@@ -41,6 +41,12 @@ The operator imposes these on every agent container and an adapter cannot overri
    schema is exactly `agent`, `instructions`, `personas[]`, `tools{}`, `models{}`.
    `src/config/schema.mjs` holds that contract as data so `validate.mjs` can warn about
    anything else — two adapters once shipped readers for fields that never existed.
+4. **The pod is identical in service and task mode**, so `AGENT_EXECUTION_MODE` is the
+   only signal; anything but `task` is `service`, unset included. In task mode `serve`
+   runs `task.exec` once and exits with its code — but it starts the HTTP server first
+   and leaves it up, because probes are not gated on mode and a `startupProbe` on
+   `/healthz` (`failureThreshold: 30` at 2s) kills a silent container about 65 seconds in.
+   `deepagents-adapter` reached the same two conclusions independently; keep them in step.
 
 ## The rule most easily got wrong
 
