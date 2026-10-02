@@ -14,7 +14,7 @@ const UPDATE = process.env.UPDATE_GOLDENS === '1';
 // Every adapter runs against the same corpus. That is the point: a change to
 // the normalizer shows up as a diff in each harness's emitted config at once,
 // instead of surfacing one runtime at a time in production.
-const ADAPTERS = ['claude-code', 'opencode'];
+const ADAPTERS = ['claude-code', 'opencode', 'pi'];
 
 for (const adapter of ADAPTERS) {
   test(`${adapter} emits stable config for every fixture`, async (t) => {
@@ -143,6 +143,7 @@ test('every emitter declares ownership of everything it writes', async (t) => {
 for (const [adapter, expectRef, extra] of [
   ['claude-code', '${CONTROL_PLANE_TOKEN}', {}],
   ['opencode', '{env:CONTROL_PLANE_TOKEN}', { timeout: 30000, oauth: false }],
+  ['pi', '${CONTROL_PLANE_TOKEN}', { timeout: 30 }],
 ]) {
   test(`${adapter} sends external MCP headers as an environment reference`, async () => {
     const { emit } = await import(join(REPO, 'examples', adapter, 'emit.mjs'));
@@ -196,6 +197,7 @@ function findMcpServers(adapter, writes) {
     const claudeJson = writes.find((w) => w.path.endsWith('.claude.json'));
     return claudeJson.values.find(([key]) => key === 'mcpServers')[1];
   }
+  if (adapter === 'pi') return writes.find((w) => w.path.endsWith('/mcp.json')).values.mcpServers;
   return writes.find((w) => w.path.endsWith('opencode.jsonc')).values.mcp;
 }
 
@@ -221,4 +223,44 @@ test('opencode falls back to the placeholder on a base without renderRef', async
   const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), { env });
 
   assert.equal(writes.at(-1).values.provider.openai.options.apiKey, 'sk-langop-proxy');
+});
+
+const piFile = (writes, name) => writes.find((w) => w.path.endsWith(`/pi/${name}`));
+
+test('pi registers the gateway as its own provider, keyed by reference', async () => {
+  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
+  const yamlText = 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n';
+  const SECRET = 'sk-langop-agent7.deadbeefcafe';
+  const env = { MODEL_API_KEY: SECRET };
+
+  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
+
+  const provider = piFile(writes, 'models.json').values.providers.langop;
+  assert.equal(provider.api, 'openai-completions');
+  assert.match(provider.baseUrl, /:8000\/v1$/);
+  assert.equal(provider.apiKey, '${MODEL_API_KEY}');
+  assert.deepEqual(piFile(writes, 'settings.json').values, { defaultProvider: 'langop', defaultModel: 'x', enableInstallTelemetry: false });
+  assert.ok(!JSON.stringify(writes).includes(SECRET), 'models.json lives on the PVC; the key must not');
+});
+
+test('pi keeps models.json valid when there is no gateway', async () => {
+  // pi rejects a models.json without `providers`, so withdrawing the gateway
+  // must leave an empty map rather than an empty file.
+  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
+  const { yamlText, env } = loadCase('minimal');
+  const writes = emit(normalize({ yamlText, env, ...FIXED_INPUTS }), emitterContext({ env }));
+  assert.deepEqual(piFile(writes, 'models.json').values, { providers: {} });
+  assert.equal(piFile(writes, 'AGENTS.md').contents, '', 'withdrawn instructions are cleared, not left in force');
+});
+
+test('pi never writes a value it would run as a command', async () => {
+  // pi executes any models.json or mcp.json value that starts with `!`.
+  const { emit } = await import(join(REPO, 'examples', 'pi', 'emit.mjs'));
+  const header = 'tools:\n  ext: {endpoint: https://x.example/mcp, headers: {Authorization: "!cat /etc/passwd"}}\n';
+  assert.throws(() => emit(normalize({ yamlText: header, env: {}, ...FIXED_INPUTS }), emitterContext({ env: {} })), /shell command/);
+
+  const config = normalize({ yamlText: 'models:\n  m: {role: primary, model: x, endpoint: "http://gw:8000"}\n', env: {}, ...FIXED_INPUTS });
+  config.gateway.apiKeyRef = '!rm -rf ~';
+  const writes = emit(config, emitterContext({ env: {} }));
+  assert.equal(piFile(writes, 'models.json').values.providers.langop.apiKey, 'sk-langop-proxy');
 });

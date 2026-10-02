@@ -1,0 +1,55 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/pi/models.json",
+    "values": {
+      "providers": {
+        "langop": {
+          "baseUrl": "http://gateway.default.svc.cluster.local:8000/v1",
+          "api": "openai-completions",
+          "apiKey": "sk-langop-proxy",
+          "models": [
+            {
+              "id": "claude-sonnet-4-5"
+            }
+          ]
+        }
+      }
+    },
+    "owns": [
+      "providers"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/settings.json",
+    "values": {
+      "defaultProvider": "langop",
+      "defaultModel": "claude-sonnet-4-5",
+      "enableInstallTelemetry": false
+    },
+    "owns": [
+      "defaultProvider",
+      "defaultModel",
+      "enableInstallTelemetry"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/mcp.json",
+    "values": {
+      "mcpServers": {
+        "mem0-memory": {
+          "url": "http://mem0-memory.tools.svc.cluster.local:8080/mcp"
+        },
+        "python-executor": {
+          "url": "http://python-executor.tools.svc.cluster.local:8080/mcp"
+        }
+      }
+    },
+    "owns": [
+      "mcpServers"
+    ]
+  },
+  {
+    "path": "/workspace/.coding-runtime/pi/AGENTS.md",
+    "contents": "Tone: professional.\nPersonality: Analytical and precise, always cites data sources and uses structured output.\nExpertise: Data analysis, statistical reasoning, and visualization.\n\nYou are a data analyst. Analyze CSV files and generate insights.\nFocus on trends, anomalies, and actionable recommendations.\nAlways cite data sources and use structured output.\n"
+  }
+]
