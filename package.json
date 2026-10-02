@@ -1,6 +1,6 @@
 {
   "name": "coding-runtime",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "Batteries-included base runtime for language-operator harness adapters: OS layer, terminal surface, and the /etc/agent/config.yaml ETL.",
