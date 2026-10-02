@@ -73,15 +73,31 @@ debug snapshot nor a harness config on the volume.
 
 ```bash
 npm ci --ignore-scripts   # node-pty is imported lazily; the unit tier does not need it built
-make test                 # the whole config layer, no container
-make goldens              # regenerate fixtures after an intentional change — then read the diff
-make lint                 # shellcheck
-make build && make conformance   # the image, under the operator's real posture
 ```
 
 The unit tier should catch nearly everything: the config layer takes `(yamlText, env)` and
 returns a value, reading no globals and touching no filesystem. That is the property the
 four hand-rolled `seed-config` scripts this replaced all lacked, and why none had tests.
+`## Testing` below says which tier to run for which change.
+
+## Testing
+
+Mirror the PR CI jobs in `.github/workflows/test.yaml` — `unit`, `shellcheck` and `image`:
+
+- Unit tests: `make test`. The whole config layer is pure over `(yamlText, env)`, so this
+  needs no container.
+- Goldens: any change to the normalizer or an emitter moves them. `make goldens`, then
+  **read the diff before committing it**. The `unit` job fails on stale goldens, and a
+  golden regenerated without being read once baked a bug in as the expected value.
+- Shell: `make lint` (`shellcheck entrypoint.sh test/conformance.sh`).
+- Image, `entrypoint.sh` or `src/serve/` touched: `make conformance`, which builds thick
+  and runs the suite under the posture the operator actually imposes — read-only rootfs,
+  uid 1000, dropped capabilities. **It needs Docker.** Where Docker is unavailable, say so
+  in the PR and let the `image` job cover it; do not report it as passed.
+- Normalized schema or emitter contract touched: `claude-code-adapter` and
+  `opencode-adapter` ship their own emitters and pin this image by digest, so a change here
+  reaches them only when they bump. State in the plan whether they need follow-up issues.
+- The PR title must be a conventional commit (`feat:`, `fix:`, `chore:`, `docs:`, `test:`).
 
 ## Releasing, and what reaches adapters
 
