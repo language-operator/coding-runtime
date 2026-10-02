@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "secret-references",
+  "displayName": "Secret references",
+  "role": "main",
+  "requires": { "codingRuntime": ">=0.1.2 <1.0.0" },
+  "env": { "SECRET_REFERENCES_CONFIG_DIR": "${STATE_DIR}/secret-references" },
+  "preflight": [{ "path": "${STATE_DIR}/secret-references", "mode": "700" }],
+  "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
+  "serve": { "surface": "none" }
+}

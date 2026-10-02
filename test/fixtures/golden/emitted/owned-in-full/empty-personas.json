@@ -1,0 +1,19 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": "claude-sonnet-4-5",
+      "models": [
+        "claude-sonnet-4-5"
+      ],
+      "servers": null,
+      "instructions": "Ship the thing."
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]

@@ -116,3 +116,33 @@ test('the served manifest hides paths and the command line by default', () => {
   const opted = publicManifest({ ...manifest, serve: { ...manifest.serve, exposeManifest: true } });
   assert.ok('terminal' in opted, 'opting in exposes the whole manifest');
 });
+
+test('every shipped example manifest is valid and declares a satisfiable floor', async () => {
+  // The emitter tests import each example's `emit.mjs` but never read its
+  // `runtime.json`, and only `minimal/` is built into an image — so without this
+  // a typo in an example manifest would reach a reader before it reached CI.
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const examplesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'examples');
+  const examples = readdirSync(examplesDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name);
+
+  assert.ok(examples.length > 0, 'there should be examples to check');
+
+  for (const example of examples) {
+    const manifest = JSON.parse(readFileSync(join(examplesDir, example, 'runtime.json'), 'utf8'));
+    assert.deepEqual(validateManifest(manifest), [], `examples/${example}/runtime.json is invalid`);
+    assert.equal(manifest.name, example, `examples/${example} should be named for its directory`);
+
+    // The floor each example declares is the version that introduced the
+    // behaviour it demonstrates, so it has to admit the version in development.
+    const { version } = JSON.parse(readFileSync(join(examplesDir, '..', 'package.json'), 'utf8'));
+    assert.ok(
+      satisfiesRange(version, manifest.requires.codingRuntime),
+      `examples/${example} requires ${manifest.requires.codingRuntime}, which excludes this base (${version})`,
+    );
+  }
+});

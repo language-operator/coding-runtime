@@ -1,0 +1,24 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/secret-references/mcp.json",
+    "owns": [
+      "servers"
+    ],
+    "values": {
+      "servers": {
+        "my-tool": {
+          "url": "http://my-tool.default.svc.cluster.local:8080/mcp"
+        }
+      }
+    }
+  },
+  {
+    "path": "/workspace/.coding-runtime/secret-references/models.json",
+    "owns": [
+      "providers"
+    ],
+    "values": {
+      "providers": {}
+    }
+  }
+]

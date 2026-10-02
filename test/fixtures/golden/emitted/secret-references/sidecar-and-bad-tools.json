@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/secret-references/mcp.json",
+    "owns": [
+      "servers"
+    ],
+    "values": {
+      "servers": {
+        "sidecar-tool": {
+          "url": "http://localhost:8080/mcp"
+        },
+        "service-tool": {
+          "url": "http://remote.tools.svc.cluster.local:8080/mcp"
+        }
+      }
+    }
+  },
+  {
+    "path": "/workspace/.coding-runtime/secret-references/models.json",
+    "owns": [
+      "providers"
+    ],
+    "values": {
+      "providers": {
+        "gateway": {
+          "baseUrl": "http://gateway.default.svc.cluster.local:8000/v1",
+          "apiKey": "sk-langop-proxy"
+        }
+      }
+    }
+  }
+]

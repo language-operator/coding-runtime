@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "minimal",
+  "displayName": "Minimal example",
+  "role": "main",
+  "requires": { "codingRuntime": ">=0.1.0 <1.0.0" },
+  "env": { "MINIMAL_CONFIG_DIR": "${STATE_DIR}/minimal" },
+  "preflight": [{ "path": "${STATE_DIR}/minimal", "mode": "700" }],
+  "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
+  "serve": { "surface": "terminal", "port": 8080, "originGuard": true },
+  "terminal": {
+    "tmuxSession": "agent",
+    "launch": ["launch-agent"],
+    "cwd": "${WORKDIR}",
+    "wsPath": "/ws",
+    "keepaliveSeconds": 25
+  }
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": "claude-sonnet-4-5",
+      "models": [
+        "claude-sonnet-4-5",
+        "gpt-4o"
+      ],
+      "servers": {
+        "mem0": {
+          "url": "http://mem0.tools.svc.cluster.local:8080/mcp"
+        },
+        "localhost": {
+          "url": "http://localhost:8080/mcp"
+        }
+      },
+      "instructions": "Do what the env says."
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]

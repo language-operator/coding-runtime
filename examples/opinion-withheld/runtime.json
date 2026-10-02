@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "opinion-withheld",
+  "displayName": "Opinion withheld",
+  "role": "main",
+  "requires": { "codingRuntime": ">=0.1.2 <1.0.0" },
+  "env": { "OPINION_WITHHELD_CONFIG_DIR": "${STATE_DIR}/opinion-withheld" },
+  "preflight": [{ "path": "${STATE_DIR}/opinion-withheld", "mode": "700" }],
+  "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },
+  "serve": { "surface": "none" }
+}

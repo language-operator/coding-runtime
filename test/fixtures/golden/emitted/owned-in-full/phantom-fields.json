@@ -1,0 +1,21 @@
+[
+  {
+    "path": "/workspace/.coding-runtime/owned-in-full/config.json",
+    "values": {
+      "model": null,
+      "models": null,
+      "servers": {
+        "my-tool": {
+          "url": "http://my-tool.default.svc.cluster.local:8080/mcp"
+        }
+      },
+      "instructions": "Do the thing."
+    },
+    "owns": [
+      "model",
+      "models",
+      "servers",
+      "instructions"
+    ]
+  }
+]
