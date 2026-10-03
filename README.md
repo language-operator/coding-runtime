@@ -32,7 +32,7 @@ Each of those is fixed once here.
 
 | tag | shape | for |
 |---|---|---|
-| `ghcr.io/language-operator/coding-runtime:X.Y.Z` | **thick** — `node:24-slim`, full unix toolchain, `gh`/`glab`, Go, Helm, tmux, the web terminal | interactive terminal coding agents |
+| `ghcr.io/language-operator/coding-runtime:X.Y.Z` | **thick** — `node:24-slim`, full unix toolchain, `gh`/`glab`/`tea`, Go, Helm, tmux, the web terminal | interactive terminal coding agents |
 | `…:X.Y.Z-python` | **thin** — `python:3.13-slim`, the same runtime posture, no Node | headless HTTP agents whose own process is the agent |
 
 `python3` and `uv` are in **both**. Which variant you pick is about the language
@@ -43,6 +43,52 @@ They have different parents and share no layers. That is deliberate: no node
 runs both shapes expecting deduplication. What they share is the contract — the
 normalized config schema, the fixture corpus, and the uid/`HOME`/cache posture —
 not bytes.
+
+## Forge CLIs and their tokens
+
+All three forge CLIs are in **both** variants: a headless agent opens pull
+requests too, and the token the operator gives it is only useful with these.
+
+| CLI | forge | setup |
+|---|---|---|
+| `gh` | GitHub | none — reads `GH_TOKEN` |
+| `glab` | GitLab | none — reads `GITLAB_TOKEN` |
+| `tea` | Forgejo/Gitea | **a login, once per container** |
+
+`gh` and `glab` read their tokens from the environment, so an agent on a GitHub
+or GitLab repository is authenticated with no setup at all. `tea` is not like
+them, and assuming it is will cost you an afternoon:
+
+```console
+$ GITEA_TOKEN=... GITEA_SERVER_URL=https://forge.example tea pulls
+Error: no available login
+```
+
+`GITEA_SERVER_URL` and `GITEA_SERVER_TOKEN` are sources for `tea login add`'s own
+flags and nothing else. Every other `tea` command resolves credentials from
+`$XDG_CONFIG_HOME/tea/config.yml`. Note also that the operator's `forgejo` vendor
+exports `GITEA_TOKEN`, which is **not** the name `tea` reads.
+
+So a launcher runs this once before handing the shell over:
+
+```sh
+# Keep tea's config off the workspace volume: it stores the token verbatim, and
+# $TMP_DIR is a memory-backed emptyDir that does not outlive the pod, while
+# $XDG_CONFIG_HOME resolves onto the PVC.
+export XDG_CONFIG_HOME="${TMP_DIR}/xdg"
+
+GITEA_SERVER_TOKEN="${GITEA_TOKEN}" tea login add \
+    --name forge \
+    --no-version-check          # Forgejo reports a version tea may reject
+```
+
+`--git-credentials` additionally registers `tea` as a git credential helper for
+that login, so `git push` over HTTPS authenticates from the same token.
+
+The base installs `tea` but does not run the login, because running it means
+writing a credential to disk — and in this runtime credentials are rendered by an
+adapter's emitter, never written by the base. See [the adapter
+contract](docs/authoring-an-adapter.md).
 
 ## Building an adapter
 
