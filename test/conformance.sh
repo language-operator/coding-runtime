@@ -209,6 +209,12 @@ if has_cli; then
     check "reports a version"            run 'coding-runtime version | grep -Eq "^[0-9]+\\.[0-9]+\\.[0-9]+"'
     check "an unknown command explains itself" run 'coding-runtime nope 2>&1 | grep -q usage'
     check "tmux is present"              run 'tmux -V'
+    # Asserts the shipped config actually took effect, not merely that the line
+    # is in the file: a version-gated option would parse and be ignored. tmux
+    # needs a session before it will keep a server alive, hence `new-session`
+    # rather than `start-server`.
+    check "tmux enables extended keys" \
+        run 'tmux -f /etc/tmux.conf new-session -d sleep 5 && tmux show -g extended-keys | grep -qx "extended-keys on"'
     check "gh is present"                run 'gh --version'
     check "glab is present"              run 'glab --version'
     # tea needs no login to report its version, which is all this asserts. It
