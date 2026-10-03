@@ -20,7 +20,7 @@ const UPDATE = process.env.UPDATE_GOLDENS === '1';
 // its business and is tested in its own repository, against the base digest it
 // pins — the one arrangement without a dependency cycle. What is tested here is
 // only what this runtime promises.
-const EXAMPLES = ['minimal', 'opinion-withheld', 'owned-in-full', 'secret-references'];
+const EXAMPLES = ['minimal', 'opinion-withheld', 'owned-file', 'owned-in-full', 'secret-references'];
 
 const emitterFor = (example) => import(join(REPO, 'examples', example, 'emit.mjs'));
 
@@ -140,6 +140,31 @@ test('opinion-withheld asserts authority only when it actually has it', async ()
   const [{ values: provisioned }] = withToken;
   assert.equal(provisioned.onboardingCompleted, true);
   assert.equal(provisioned.account.displayName, 'data-analyst');
+});
+
+// ---------------------------------------------------------------------------
+// A file the runtime owns outright is replaced, not merged
+// ---------------------------------------------------------------------------
+
+test('owned-file writes whole contents and claims no keys', async () => {
+  const { writes } = await emitCase('owned-file', 'spec-agents-example');
+  const [agents] = writes;
+
+  // No `owns` list, because there is nothing to negotiate: the runtime's content
+  // is the whole file. This is also the only honest descriptor for a harness whose
+  // config is not JSON — merging into parsed JSON would quarantine a YAML file the
+  // moment the harness rewrote it in its own format.
+  assert.equal(agents.owns, undefined);
+  assert.equal(agents.values, undefined);
+  assert.match(agents.contents, /data analyst/);
+});
+
+test('owned-file states a withdrawal rather than leaving it in force', async () => {
+  // The operator supplying no instructions must clear the file, not skip it.
+  // Skipping would leave the previous run's standing context governing an agent
+  // that is no longer meant to have it.
+  const { writes } = await emitCase('owned-file', 'minimal');
+  assert.equal(writes[0].contents, '');
 });
 
 // ---------------------------------------------------------------------------

@@ -193,6 +193,39 @@ test('seeding twice is byte-identical', async () => {
   assert.ok(log.lines.some((l) => l.includes('unchanged')), 'a no-op restart should report no change');
 });
 
+test('seeding an owned-file-only adapter twice reports the second as unchanged', async () => {
+  // The regression from hermes-adapter#3, at the level it was reported. The
+  // conformance check `seed is idempotent` greps a second seed for `unchanged`,
+  // and `cli.mjs` only prints that for a write reporting changed: false. While
+  // `writeOwnedFile` returned an unconditional true, managed JSON was the only
+  // descriptor that could satisfy it, so an adapter whose harness config is YAML,
+  // Markdown or `.env` could not pass at all.
+  const { workspace, env } = stage({ example: 'owned-file', configYaml: FULL_CONFIG });
+
+  const first = recorder();
+  assert.equal(await main(['seed'], { env, log: first }), 0, first.lines.join('\n'));
+  const agentsPath = configFile(workspace, 'owned-file', 'AGENTS.md');
+  assert.match(readFileSync(agentsPath, 'utf8'), /Review the pull request\./);
+  assert.ok(first.lines.some((l) => l.startsWith(`log wrote ${agentsPath}`)), 'the first seed writes it');
+
+  const second = recorder();
+  assert.equal(await main(['seed'], { env, log: second }), 0);
+  assert.ok(
+    second.lines.some((l) => l.startsWith(`log unchanged ${agentsPath}`)),
+    `the second seed must report it unchanged, got:\n${second.lines.join('\n')}`,
+  );
+
+  // And a real edit is still written, so this is not passing by never writing.
+  writeFileSync(join(dirname(env.CODING_RUNTIME_MANIFEST), 'agent-config.yaml'), `
+agent: {name: seed-test, namespace: default}
+instructions: Something else entirely.
+`);
+  const third = recorder();
+  assert.equal(await main(['seed'], { env, log: third }), 0);
+  assert.ok(third.lines.some((l) => l.startsWith(`log wrote ${agentsPath}`)), 'changed instructions are written');
+  assert.match(readFileSync(agentsPath, 'utf8'), /Something else entirely\./);
+});
+
 test('phantom config keys are reported on the way through', async () => {
   const { env } = stage({ configYaml: 'agent: {name: x}\na2a: {mode: server}\n' });
   const log = recorder();
