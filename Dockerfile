@@ -6,7 +6,7 @@
 # wraps:
 #
 #   thick  an interactive terminal coding agent. Node, the full unix toolchain,
-#          gh/glab, Go, Helm, tmux and the web terminal. Used by claude-code
+#          gh/glab/tea, Go, Helm, tmux and the web terminal. Used by claude-code
 #          and opencode.
 #   thin   a headless HTTP agent whose own process is the agent. The same runtime
 #          posture, no Node and no serving surface. No adapter uses it yet;
@@ -29,6 +29,7 @@ ARG GH_VERSION=2.65.0
 ARG GLAB_VERSION=1.117.0
 ARG GO_VERSION=1.26.4
 ARG HELM_VERSION=3.17.3
+ARG TEA_VERSION=0.16.0
 ARG UV_VERSION=0.11.16
 
 # uv goes into both variants, so it is a stage rather than two pinned COPYs that
@@ -65,6 +66,7 @@ ARG GH_VERSION
 ARG GLAB_VERSION
 ARG GO_VERSION
 ARG HELM_VERSION
+ARG TEA_VERSION
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tar wget \
     && rm -rf /var/lib/apt/lists/*
@@ -82,6 +84,22 @@ RUN ARCH=$(dpkg --print-architecture) && \
     wget -qO /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_${ARCH}.tar.gz" && \
     tar -xzf /tmp/glab.tar.gz -C /tmp bin/glab && \
     install -D /tmp/bin/glab /out/usr/local/bin/glab
+
+# tea: Gitea/Forgejo CLI, for the operator's `forgejo` repository vendor.
+#
+# Not the same arrangement as gh and glab, and this is the one tool here that
+# needs saying: tea reads no token from the environment. GITEA_SERVER_URL and
+# GITEA_SERVER_TOKEN are sources for `tea login add`'s own flags, nothing more —
+# every other command resolves credentials from $XDG_CONFIG_HOME/tea/config.yml.
+# So a launcher has to run a login first; see "Forge CLIs and their tokens" in
+# the README for the one-liner, and why it points XDG_CONFIG_HOME at the tmp dir
+# rather than the workspace volume.
+#
+# A plain binary rather than a tarball, so it lands via /tmp and `install -D`
+# like the rest instead of a bare `wget -O` that would need /out to exist.
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -qO /tmp/tea "https://gitea.com/gitea/tea/releases/download/v${TEA_VERSION}/tea-${TEA_VERSION}-linux-${ARCH}" && \
+    install -D -m 755 /tmp/tea /out/usr/local/bin/tea
 
 # Helm, for agents that work on charts.
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -203,9 +221,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /uvx /usr/local/bin/
-# gh and glab, but not Go: an agent on thin still opens PRs and MRs, and the
+# The forge CLIs, but not Go: an agent on thin still opens PRs and MRs, and the
 # tokens it is given are only useful with these. Go stays a thick-only toolchain.
-COPY --from=tools /out/usr/local/bin/gh /out/usr/local/bin/glab /usr/local/bin/
+COPY --from=tools /out/usr/local/bin/gh /out/usr/local/bin/glab /out/usr/local/bin/tea /usr/local/bin/
 
 # python:3.13-slim has no uid 1000. Without a passwd entry for the uid the
 # operator forces, git warns on every command, ssh complains, and anything

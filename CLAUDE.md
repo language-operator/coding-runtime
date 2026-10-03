@@ -8,13 +8,18 @@ and an emitter.
 
 Two variants, published from one Dockerfile:
 
-- **thick** (`node:24-slim`) — full unix toolchain, `gh`/`glab`, Go, Helm, tmux, and the
-  xterm.js/`node-pty` terminal. For interactive terminal coding agents.
+- **thick** (`node:24-slim`) — full unix toolchain, `gh`/`glab`/`tea`, Go, Helm, tmux, and
+  the xterm.js/`node-pty` terminal. For interactive terminal coding agents.
 - **thin** (`python:3.13-slim`) — the same runtime posture, no Node and no serving
   surface. For headless HTTP agents whose own process is the agent.
 
-`python3` and `uv` are in both variants; the split is about the agent process's own
-language and whether it needs a terminal, not about Python's availability.
+`python3`, `uv` and the three forge CLIs are in both variants; the split is about the agent
+process's own language and whether it needs a terminal, not about Python's availability.
+
+`gh` and `glab` read their tokens from the environment and need no setup. `tea` does not —
+it reads `$XDG_CONFIG_HOME/tea/config.yml`, so a launcher must run `tea login add` first,
+and the operator's `forgejo` vendor exports `GITEA_TOKEN` rather than the `GITEA_SERVER_TOKEN`
+that login reads. See "Forge CLIs and their tokens" in `README.md`.
 
 ## Layout
 

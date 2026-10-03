@@ -211,11 +211,16 @@ if has_cli; then
     check "tmux is present"              run 'tmux -V'
     check "gh is present"                run 'gh --version'
     check "glab is present"              run 'glab --version'
+    # tea needs no login to report its version, which is all this asserts. It
+    # cannot reach a forge without one — see the README on why that login is a
+    # launcher's job and not the base's.
+    check "tea is present"               run 'tea --version'
     check "node-pty loads"               run 'node -e "require(\"/opt/coding-runtime/node_modules/node-pty\")"'
 else
     echo "== runtime (thin: no Node, contract only) =="
     check "gh is present"                run 'gh --version'
     check "glab is present"              run 'glab --version'
+    check "tea is present"               run 'tea --version'
     check "a version is recorded"        run '[ -s /opt/coding-runtime/VERSION ]'
 fi
 
