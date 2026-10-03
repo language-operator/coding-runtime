@@ -9,6 +9,7 @@ copies of any shipped adapter.
 | `minimal/` | the smallest emitter that works — one file, one owned key. Start here. |
 | `owned-in-full/` | a key owned in full is supplied every run, `null` included |
 | `opinion-withheld/` | a key the runtime only sometimes has an opinion about is omitted, so provenance protects the user's value |
+| `owned-file/` | a file the runtime owns outright is replaced rather than merged, and re-seeding it is a no-op |
 | `secret-references/` | a credential reaches the harness as a reference, never a value — and what fail-closed means when one cannot be rendered |
 
 `owned-in-full/` and `opinion-withheld/` are two halves of one rule, and the one
@@ -55,9 +56,14 @@ or [`opencode-adapter`](https://github.com/language-operator/opencode-adapter).
 
 Each example declares the floor **its own behaviour** needs, not a blanket range:
 
-- `minimal/` — `>=0.1.0`, needing nothing beyond a module emitter.
+- `minimal/` and `owned-file/` — `>=0.1.0`, needing nothing beyond a module emitter.
 - the other three — `>=0.1.2`, the release that added provenance-aware deletion
   and `$(NAME)` reference rendering (#10, #14).
+
+`owned-file/` is the one case where the floor understates things. The descriptor has
+always worked, so `>=0.1.0` is what the adapter needs to *run* — but re-seeding only
+became a no-op in 0.1.7 (#38), and an adapter that needs to pass `seed is idempotent`
+wants that version. Before it, `writeOwnedFile` reported every write as a change.
 
 A real adapter's floor is its own to declare, and is whatever the features it
 actually uses require.

@@ -143,6 +143,20 @@ better fallen back on than turned into a boot dependency.
 - `{ path, contents }` — write a file the runtime owns outright.
 - `{ path, mode }` — ensure a directory exists.
 
+An owned file is compared before it is written, so re-seeding unchanged contents is
+a no-op and reports itself as one. Adapters rely on that to pass the `seed is
+idempotent` check below: `seed` prints `unchanged` only for a write that reports no
+change, so before 0.1.7 an adapter whose harness config is YAML, Markdown or `.env`
+could not pass it — `{ path, contents }` being its only honest descriptor.
+
+Supply the contents even when there is nothing to say: an owned file the operator
+has emptied should be written **empty**, not skipped, or the last run's standing
+context stays in force. `examples/owned-file/` shows this.
+
+Do not point `{ path, values, owns }` at a non-JSON file to borrow its merge
+semantics. It merges into parsed JSON, so the first time the harness rewrites that
+file in its own format the next seed quarantines it and the user's edits go with it.
+
 ### `owns` is the important part
 
 `owns` is a **static** list of every path the runtime manages in that file —

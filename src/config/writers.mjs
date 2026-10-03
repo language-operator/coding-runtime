@@ -277,8 +277,32 @@ export function writeManagedJson(path, { values = {}, owns = [], indent = 2, onW
   return { path, changed };
 }
 
-/** Write a whole file the runtime owns outright (instructions, persona markdown). */
+/**
+ * Write a whole file the runtime owns outright (instructions, persona markdown).
+ *
+ * Compares before writing, so re-seeding an unchanged file is a no-op and reports
+ * itself as one. That matters beyond tidiness: `coding-runtime seed` logs
+ * `unchanged` only for a write that reports `changed: false`, and the conformance
+ * check `seed is idempotent` greps a second seed for exactly that word. While this
+ * returned an unconditional `true`, managed JSON was the only descriptor that could
+ * ever satisfy it — so an adapter whose harness config is YAML, Markdown or `.env`
+ * could not pass, its only honest descriptor being this one.
+ *
+ * Bytes are compared as a Buffer rather than a decoded string, so the answer does
+ * not depend on an encoding assumption. Any failure to read — nothing there yet, a
+ * directory in the way, a permissions problem, a torn read — counts as "differs"
+ * and falls through to the write, which is what this did unconditionally before.
+ *
+ * `mode` is not compared. No caller passes one (`applyWrites` drops it), and the
+ * umask reduces what `writeFileAtomic` asks for, so comparing requested against
+ * on-disk mode would report a change on every run — this bug again, with a new
+ * cause. Enforcing mode is a separate change.
+ */
 export function writeOwnedFile(path, contents, mode = 0o644) {
+  try {
+    if (readFileSync(path).equals(Buffer.from(contents))) return { path, changed: false };
+  } catch { /* unreadable or absent: write it */ }
+
   writeFileAtomic(path, contents, mode);
   return { path, changed: true };
 }

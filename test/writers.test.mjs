@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -118,6 +118,61 @@ test('writes leave no temp files behind', () => {
   writeOwnedFile(join(dir, 'AGENTS.md'), '# hi\n');
 
   assert.deepEqual(readdirSync(dir).sort(), ['AGENTS.md', 'a.json']);
+});
+
+test('an owned file reports a real change, and a re-seed of the same bytes does not', () => {
+  // `coding-runtime seed` logs `unchanged` only for a write reporting
+  // changed: false, and the conformance check `seed is idempotent` greps a second
+  // seed for that word. While this returned an unconditional true, an adapter
+  // whose harness config is not JSON could never pass it — hermes-adapter#3.
+  const dir = scratch();
+  const path = join(dir, 'config.yaml');
+
+  const created = writeOwnedFile(path, 'model: sonnet\n');
+  assert.equal(created.changed, true, 'a file that did not exist is a change');
+  assert.equal(readFileSync(path, 'utf8'), 'model: sonnet\n');
+
+  const again = writeOwnedFile(path, 'model: sonnet\n');
+  assert.equal(again.changed, false, 'the same bytes a second time are not a change');
+
+  const edited = writeOwnedFile(path, 'model: opus\n');
+  assert.equal(edited.changed, true, 'different bytes are still written');
+  assert.equal(readFileSync(path, 'utf8'), 'model: opus\n');
+});
+
+test('an unchanged owned file is genuinely not rewritten', () => {
+  // Reporting `changed: false` while still rewriting would satisfy the log and
+  // keep churning the file, so assert the file itself was left alone.
+  const dir = scratch();
+  const path = join(dir, 'AGENTS.md');
+  writeOwnedFile(path, 'standing context\n');
+  const before = statSync(path).mtimeNs;
+
+  assert.equal(writeOwnedFile(path, 'standing context\n').changed, false);
+  assert.equal(statSync(path).mtimeNs, before, 'an unchanged file must not be touched');
+});
+
+test('an owned file that cannot be read is written rather than skipped', () => {
+  // Any failure to compare counts as "differs", so an odd state falls through to
+  // the write this did unconditionally before. A directory in the way is the
+  // reachable case: the write then fails loudly instead of silently reporting
+  // that nothing needed doing.
+  const dir = scratch();
+  const path = join(dir, 'AGENTS.md');
+  mkdirSync(path);
+
+  assert.throws(() => writeOwnedFile(path, 'x\n'), 'a directory in the way must not read as unchanged');
+});
+
+test('an owned file is compared as bytes, not as a decoded string', () => {
+  // Emitters hand over strings today, but comparing through a decode would make
+  // the answer depend on an encoding assumption.
+  const dir = scratch();
+  const path = join(dir, 'persona.md');
+  writeOwnedFile(path, 'Tone: café ☕\n');
+
+  assert.equal(writeOwnedFile(path, 'Tone: café ☕\n').changed, false, 'multi-byte content compares equal to itself');
+  assert.equal(writeOwnedFile(path, 'Tone: cafe ☕\n').changed, true);
 });
 
 test('readJsonOr tolerates an absent file without quarantining anything', () => {
