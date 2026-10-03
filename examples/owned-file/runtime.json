@@ -3,7 +3,7 @@
   "name": "owned-file",
   "displayName": "Owned file",
   "role": "main",
-  "requires": { "codingRuntime": ">=0.1.0 <1.0.0" },
+  "requires": { "codingRuntime": ">=0.1.7 <1.0.0" },
   "env": { "OWNED_FILE_CONFIG_DIR": "${STATE_DIR}/owned-file" },
   "preflight": [{ "path": "${STATE_DIR}/owned-file", "mode": "700" }],
   "config": { "emitter": { "type": "module", "path": "/opt/adapter/emit.mjs" } },

@@ -56,14 +56,13 @@ or [`opencode-adapter`](https://github.com/language-operator/opencode-adapter).
 
 Each example declares the floor **its own behaviour** needs, not a blanket range:
 
-- `minimal/` and `owned-file/` — `>=0.1.0`, needing nothing beyond a module emitter.
-- the other three — `>=0.1.2`, the release that added provenance-aware deletion
-  and `$(NAME)` reference rendering (#10, #14).
-
-`owned-file/` is the one case where the floor understates things. The descriptor has
-always worked, so `>=0.1.0` is what the adapter needs to *run* — but re-seeding only
-became a no-op in 0.1.7 (#38), and an adapter that needs to pass `seed is idempotent`
-wants that version. Before it, `writeOwnedFile` reported every write as a change.
+- `minimal/` — `>=0.1.0`, needing nothing beyond a module emitter.
+- `opinion-withheld/`, `owned-in-full/`, `secret-references/` — `>=0.1.2`, the release
+  that added provenance-aware deletion and `$(NAME)` reference rendering (#10, #14).
+- `owned-file/` — `>=0.1.7`, the release where re-seeding an unchanged owned file
+  became a no-op (#38). The descriptor itself has always worked, but before 0.1.7
+  `writeOwnedFile` reported every write as a change, so an adapter whose only
+  descriptor was this one could not pass the `seed is idempotent` conformance check.
 
 A real adapter's floor is its own to declare, and is whatever the features it
 actually uses require.
